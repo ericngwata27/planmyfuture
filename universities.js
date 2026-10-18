@@ -145,6 +145,10 @@ function showLookupResult(result, errorText, cachedAt) {
   }
 
   box.append(badge, makeElement("p", "", message));
+  // Found information can be wrong (see terms.html), so always say where to check
+  if (result.aiSearched || result.foundOnWikidata) {
+    box.append(makeElement("p", "autofill-disclaimer", "Always confirm deadlines on the official university website."));
+  }
   if (cachedAt) {
     box.append(makeElement("p", "", "Saved search from " +
       new Date(cachedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" }) +

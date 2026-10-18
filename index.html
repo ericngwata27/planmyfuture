@@ -522,7 +522,13 @@
   <footer class="site-footer">
     <div class="container footer-inner">
       <p>&copy; <span id="year"></span> planmyfuture</p>
-      <p class="muted">Your data is saved in this browser only. Earth imagery: NASA.</p>
+      <!-- Legal pages (required in Germany: privacy policy and imprint) -->
+      <nav class="footer-links" aria-label="Legal">
+        <a href="privacy.html">Privacy / Datenschutz</a>
+        <a href="terms.html">Terms / Nutzungsbedingungen</a>
+        <a href="imprint.html">Imprint / Impressum</a>
+      </nav>
+      <p class="muted">Signed out, your planner stays in this browser. Earth imagery: NASA.</p>
     </div>
   </footer>
 
@@ -555,6 +561,7 @@
       </form>
       <button class="link-button" id="forgot-password" type="button">Forgot password? Email me a link</button>
       <p class="muted account-note">What's already in this browser is added to your account when you sign in.</p>
+      <p class="muted account-note">By creating an account you agree to the <a href="terms.html" target="_blank">Terms of Use</a>. How we handle your data: <a href="privacy.html" target="_blank">Privacy Policy</a>. You must be 16 or older.</p>
     </div>
 
     <!-- After "Forgot password" or "Create account" when an email is needed -->

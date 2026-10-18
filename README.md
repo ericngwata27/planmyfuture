@@ -64,6 +64,7 @@ The tests (`tests/app.spec.mjs`) open the site in headless Chrome and check the 
 | `supabase/schema.sql` | The database setup: paste it into Supabase's SQL Editor |
 | `main.js` | Starts the app: loads data, updates old data, draws everything |
 | `timeline.js` | The Timeline page (cards, dates, slider, milestones, calendar export) |
+| `privacy.html`, `terms.html`, `imprint.html` | Privacy Policy, Terms of Use and Imprint (German + English). Fill in the highlighted `[ … ]` placeholders. |
 | `textures/` | The globe's Earth pictures (and optional 8K ones, see its README) |
 | `vendor/` | Local copies of the libraries (Globe.gl, three.js, Lucide, Supabase) and the country borders |
 | `fonts/` | The fonts (Manrope, Figtree), served from the site itself |

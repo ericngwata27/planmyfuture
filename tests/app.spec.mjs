@@ -54,6 +54,8 @@ async function addUniversity(page, name, course) {
   await page.fill("#course", course);
   await page.click("#submit-button");                       // Find details
   await expect(page.locator("#city")).toHaveValue("Paris");
+  // Found details always come with a reminder to check the official website
+  await expect(page.locator("#lookup-status")).toContainText("Always confirm deadlines on the official university website.");
   await page.click("#submit-button");                       // Add to map
 }
 
@@ -491,6 +493,42 @@ test("if your account can't be reached, the header says Not synced", async ({ pa
   await expect(page.locator("#save-status")).toHaveText("Not synced", { timeout: 10000 });   // gives up after 6 s
   await expect(page.locator("#uni-list .uni-card")).toHaveCount(1);   // this browser's copy still works
   expect(page.errors).toEqual([]);
+});
+
+// ----- Legal pages (privacy.html, terms.html, imprint.html) -----
+
+test("the footer links to the privacy policy, terms and imprint", async ({ page }) => {
+  await openWith(page, {});
+  const pages = [
+    ["Privacy / Datenschutz", "/privacy.html", ["Datenschutzerklärung", "Privacy Policy"]],
+    ["Terms / Nutzungsbedingungen", "/terms.html", ["Nutzungsbedingungen", "Terms of Use"]],
+    ["Imprint / Impressum", "/imprint.html", ["Impressum", "Imprint"]],
+  ];
+  for (const [link, path, headings] of pages) {
+    await page.goto("/");
+    await page.locator(".footer-links").getByRole("link", { name: link }).click();
+    await expect(page).toHaveURL(new RegExp(path.replace(".", "\\.") + "$"));
+    await expect(page.locator("h1")).toHaveText(headings);   // German first, then English
+  }
+  expect(page.errors).toEqual([]);
+});
+
+test("the privacy policy covers the required GDPR points", async ({ page }) => {
+  await page.goto("/privacy.html");
+  const english = page.locator("#en");
+  for (const text of ["Art. 6(1)(b)", "Art. 6(1)(f)", "Supabase", "GitHub", "Wikimedia", "OpenStreetMap", "Anthropic",
+    "Standard Contractual Clauses", "How long data is kept", "local storage", "Art. 15", "Art. 21",
+    "Right to complain", "16 and over", "automated decision-making", "Last updated"]) {
+    await expect(english).toContainText(text);
+  }
+  await expect(page.locator("#de")).toContainText("Art. 6 Abs. 1 lit. b DSGVO");
+});
+
+test("the sign-in window links to the terms and privacy policy", async ({ page }) => {
+  await openWith(page, {});
+  await page.getByRole("button", { name: "Sign in" }).first().click();
+  await expect(page.locator("#account-dialog").getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "privacy.html");
+  await expect(page.locator("#account-dialog").getByRole("link", { name: "Terms of Use" })).toHaveAttribute("href", "terms.html");
 });
 
 // ----- The sign-in window: eye button, closing, password, deleting -----
