@@ -201,12 +201,171 @@ const SEARCH_INSTRUCTIONS = [
     "Never use it to choose or leave out a campus.",
 ].join("\n");
 
+// ----- The A/B experiment -----
+// Only runs when the address ends in ?autofill=A or ?autofill=B. Without
+// it the site works exactly as above (normal visitors never see this).
+//   A = today's search (the instructions above), with its own saved searches
+//       and the cost/time shown under the result
+//   B = a more thorough search: more searches, whole pages read (web fetch),
+//       a checklist, and every applicant route labelled (the instructions below)
+// The results are scored by hand against the screenshots and the Excel sheet.
+function readAutofillVersion() {
+  const value = (new URLSearchParams(window.location.search).get("autofill") || "").toUpperCase();
+  return value === "A" || value === "B" ? value : "";
+}
+const AUTOFILL_VERSION = readAutofillVersion();   // "" = the normal site
+
+// Official sites version B may use besides the university's own website.
+// Each one was checked to be the official site (October 2026).
+const OFFICIAL_ADMISSIONS_DOMAINS = [
+  // Central and government application systems
+  "ucas.com",                 // UK
+  "cao.ie",                   // Ireland
+  "ouac.on.ca",               // Ontario, Canada
+  "studielink.nl",            // Netherlands
+  "parcoursup.gouv.fr",       // France
+  "parcoursup.fr",            // France (the applicant portal)
+  "uni-assist.de",            // Germany (international qualifications)
+  "hochschulstart.de",        // Germany
+  "universityadmissions.se",  // Sweden (English)
+  "antagning.se",             // Sweden (Swedish)
+  "vtac.edu.au",              // Victoria, Australia
+  "uac.edu.au",               // New South Wales and ACT, Australia
+  // Official testing organisations
+  "collegeboard.org",         // SAT
+  "act.org",                  // ACT
+  "ets.org",                  // TOEFL, GRE
+  "ielts.org",                // IELTS
+  "mba.com",                  // GMAT
+  "gmac.com",                 // GMAT
+  "esat-tmua.ac.uk",          // TARA, TMUA, ESAT (UAT-UK)
+];
+
+// Sites version B must never use when we don't know the official website
+// (then it can't be limited to the list above)
+const UNOFFICIAL_DOMAINS = [
+  "reddit.com", "quora.com", "topuniversities.com", "timeshighereducation.com", "usnews.com",
+  "niche.com", "collegevine.com", "studyportals.com", "bachelorsportal.com", "mastersportal.com",
+  "yocket.com", "shiksha.com", "collegedunia.com", "leverageedu.com", "gmatclub.com", "uniadmissions.co.uk",
+];
+
+const SEARCH_INSTRUCTIONS_B = [
+  "You are an admissions data extractor. Find every admissions date for one university course, for one admissions cycle, from official sources only.",
+  "",
+  "Sources, in this order of preference:",
+  "1. The university's own admissions and course pages",
+  "2. The university's official application portal",
+  "3. Government or central admissions systems (for example UCAS, CAO, OUAC, Studielink, Parcoursup, uni-assist, hochschulstart, University Admissions in Sweden, VTAC, UAC)",
+  "4. Official testing organisations (for example College Board, ACT, ETS, IELTS, GMAC, UAT-UK)",
+  "Never use blogs, forums, Reddit, ranking websites, agents or third-party summaries.",
+  "",
+  "How to work:",
+  "- Search, then open the most relevant official pages with web fetch to read them in full: long pages, date tables and expandable or \"show more\" sections. Search results alone often miss dates.",
+  "- Do not stop once you have found the application deadline. Go through the whole checklist below.",
+  "- Use the applicant's qualification to plan searches, for example \"[University] German Abitur requirements\" and \"[University] admissions test requirements\". Use it to find more, never to leave anything out.",
+  "",
+  "Checklist (look for each one):",
+  "- Application: opening date, application deadline, programme-specific deadlines, intake-specific deadlines, every round (early, priority, final), differences for domestic and international (or EU and non-EU) applicants, decision or result dates, course start.",
+  "- Tests: whether a test is required (SAT, ACT, IELTS, TOEFL, GRE, GMAT, TARA or a programme-specific test), and its registration deadlines and test dates.",
+  "- Documents: transcript, recommendation, portfolio and upload deadlines.",
+  "- Interview: interview invitations, interview dates and deadlines, assessment centres.",
+  "- Enrolment: offer acceptance, deposit, registration and enrolment confirmation deadlines.",
+  "",
+  "Never invent dates (most important rule):",
+  "- Never infer a date. Never estimate a deadline. Never derive deadlines from prior years.",
+  "- Never generate dates that were not found on official sources.",
+  "- If a date cannot be verified on an official source, leave it out: it is missing. Missing information is preferable to invented information.",
+  "- Never invent a day. If a page only gives a month, write just the month and year (for example: June 2027).",
+  "",
+  "Admissions cycle:",
+  "- Give dates for the requested intake's admissions cycle only. Include deadlines in that cycle that have already passed; never leave them out.",
+  "- If the requested intake does not exist for this course, do not silently use another one. Write in Admissions Cycle: \"Requested intake not available. Nearest available intakes: <intake>, <intake>\", and give the dates for those intakes with the intake in each date's name.",
+  "- If no intake is given, use the next intake that is open for applications (or opens next), and write in Admissions Cycle which one, for example: \"Using 2027/28 admissions cycle (September 2027 entry)\".",
+  "",
+  "Applicant routes:",
+  "- Give the deadlines for ALL applicant groups (for example domestic, international, EU, non-EU). Never leave a group out because of the applicant's profile.",
+  "- Write who each date applies to.",
+  "",
+  "Return plain text with these sections, each on its own line as 'Section: value', using exactly these section names:",
+  "University:",
+  "Course:",
+  "City:",
+  "Country:",
+  "Admissions Cycle:",
+  "Application Deadline:",
+  "Entry Requirements:",
+  "How to Apply:",
+  "Course Description:",
+  "Important Notes:",
+  "Application Dates:",
+  "Rolling Admissions:",
+  "",
+  "Rules:",
+  "- No commentary, disclaimers or notes about your search. Do not recommend when to apply.",
+  "- If information is missing, write \"Not available\".",
+  "- Admissions Cycle: the cycle you gave dates for (see above), in one sentence.",
+  "- Application Deadline: the next application deadline that hasn't passed yet, with day, month and year (for example 14 January 2027).",
+  "- Entry Requirements: for the applicant's qualification when the pages list it, including required tests. Up to 4 sentences.",
+  "- How to Apply: the application route and portal, in up to 3 sentences.",
+  "- Application Dates: list EVERY date from the checklist, in date order, one per line. " +
+    "Write each one as: type | campus | name | date | applies to | page URL. " +
+    "type is one of: opens, deadline, decision, start, test, interview, documents, enrolment, other. " +
+    "campus is the campus name, or - if the date is the same for every campus. " +
+    "name is short, for example: Round 1, Final deadline, TARA registration deadline, Deposit deadline. " +
+    "applies to is who the date is for (for example international applicants, EU applicants), or all. " +
+    "page URL is the official page where you found the date.",
+  "  Example:",
+  "  opens | - | Applications open | 1 September 2026 | all | https://www.example.edu/apply",
+  "  deadline | Paris | Round 1 | 18 November 2026 | all | https://www.example.edu/dates",
+  "  deadline | - | Final deadline | 15 January 2027 | international applicants | https://www.example.edu/international",
+  "  test | - | Admissions test registration deadline | 1 October 2026 | all | https://www.example.org/test-dates",
+  "  (These example dates are made up: never copy them.)",
+  "- Rolling Admissions: write yes if applications are reviewed as they arrive or places are filled in order, otherwise no.",
+  "- Use plain text only - no markdown.",
+].join("\n");
+
+// Everything that differs between the normal search (A) and version B
+const SEARCH_SETUPS = {
+  A: { instructions: SEARCH_INSTRUCTIONS, maxTokens: 8000, effort: "low", requests: 3, maxDates: 40 },
+  B: {
+    instructions: SEARCH_INSTRUCTIONS_B,
+    maxTokens: 16000,
+    effort: "medium",        // the model's normal effort: more thorough than "low"
+    requests: 5,             // the first request + up to 4 "carry on" rounds
+    maxDates: 80,            // room for tests, interviews, documents and every route
+    searches: 10,            // web searches per request
+    fetches: 6,              // whole pages read per request
+    pageTokens: 20000,       // a long page is cut off after about this many tokens
+  },
+};
+
+// Prices in US dollars, to show what a search cost (from Anthropic's price list).
+// Tokens are priced per million; each web search costs $10 per 1,000.
+// Web fetch has no extra fee: the pages it reads count as input tokens.
+const MODEL_PRICES = {
+  "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
+};
+const PRICE_PER_SEARCH = 0.01;
+
+// "2027-09" -> "2027/28 admissions cycle". Courses starting from July to
+// December belong to an academic year that runs into the next year;
+// those starting January to June (e.g. Australia) are named by one year.
+function admissionsCycle(intake) {
+  if (!intake) return "";
+  const parts = intake.split("-");
+  const year = Number(parts[0]);
+  if (Number(parts[1]) >= 7) return year + "/" + String(year + 1).slice(2) + " admissions cycle";
+  return year + " admissions cycle";
+}
+
 // The section names Claude uses, matched to our form's boxes
 const SECTION_KEYS = {
   "university": "university",
   "course": "course",
   "city": "city",
   "country": "country",
+  "admissions cycle": "cycle",          // version B only
   "application deadline": "deadline",
   "entry requirements": "requirements",
   "how to apply": "applicationInfo",
@@ -411,10 +570,14 @@ function splitCampus(item) {
 
 const DATE_TYPES = ["opens", "deadline", "decision", "start", "other"];
 
+// Extra types that only auto-fill version B asks for (the experiment).
+// They're kept when saved, but aren't offered in the "Add date" form.
+const EXTRA_DATE_TYPES = ["test", "interview", "documents", "enrolment"];
+
 // "Deadline", "Round 1 closes", "Results" -> one of DATE_TYPES
 function dateType(text) {
   const value = (text || "").toLowerCase().trim();
-  if (DATE_TYPES.indexOf(value) !== -1) return value;
+  if (DATE_TYPES.indexOf(value) !== -1 || EXTRA_DATE_TYPES.indexOf(value) !== -1) return value;
   if (/decision|result|notif|offer|outcome|answer|response/.test(value)) return "decision";
   if (/\bopen/.test(value)) return "opens";
   if (/start|begin|commence|orientation|induction|welcome/.test(value)) return "start";
@@ -456,7 +619,7 @@ function itemDateText(item) {
 }
 
 function itemText(item) {
-  return [item.campus, item.label, itemDateText(item)].filter(Boolean).join(" · ");
+  return [item.campus, item.label, item.appliesTo, itemDateText(item)].filter(Boolean).join(" · ");
 }
 
 // Turn one date into a tidy, safe item (also used for dates saved
@@ -467,7 +630,7 @@ function cleanDateItem(raw) {
   const exact = /^\d{4}-\d{2}-\d{2}$/.test(date);
   if (!exact && !/^\d{4}-\d{2}$/.test(date)) return null;
   const text = function (value, max) { return typeof value === "string" ? value.trim().slice(0, max) : ""; };
-  return {
+  const item = {
     label: text(raw.label, 60) || "Date",
     campus: text(raw.campus, 40),
     date: date,
@@ -475,14 +638,22 @@ function cleanDateItem(raw) {
     sourceUrl: safeUrl(raw.sourceUrl) || "",
     approximate: !exact,
   };
+  // Who the date is for, e.g. "international applicants" (only version B finds this)
+  const appliesTo = text(raw.appliesTo, 60);
+  if (appliesTo) item.appliesTo = appliesTo;
+  return item;
 }
 
 // Claude's answer, e.g.
 //   "deadline | Paris | Round 1 | 18 November 2026 | https://...; opens | - | Applications open | September 2026 | https://..."
 // -> a list of date items, in date order. Older free-text answers
 // ("Paris: Round 1 - 18 November 2026") still work.
-function parseApplicationDates(text) {
+// options (version B): { appliesTo: true } when each line has an "applies to"
+// part before the URL, and maxDates (40 unless given).
+function parseApplicationDates(text, options) {
   if (typeof text !== "string" || /^\s*(not available|n\/a|none|unknown)\.?\s*$/i.test(text)) return [];
+  const withAppliesTo = Boolean(options && options.appliesTo);
+  const maxDates = (options && options.maxDates) || 40;
   const items = [];
 
   // One date per line, or separated by "; " (a web address can contain ";")
@@ -498,6 +669,11 @@ function parseApplicationDates(text) {
       if (!found) return;
       const campus = fields[1] === "-" || /^(all|any|none|n\/a)$/i.test(fields[1]) ? "" : fields[1];
       raw = { type: dateType(fields[0]), campus: campus, label: fields[2], date: found.date, sourceUrl: fields[4] || "" };
+      if (withAppliesTo && fields.length >= 6) {
+        // type | campus | name | date | applies to | URL
+        raw.appliesTo = /^(-|all|everyone|all applicants|any|none|n\/a)$/i.test(fields[4]) ? "" : fields[4];
+        raw.sourceUrl = fields[5];
+      }
     } else {
       // Free text: "Paris: Round 1 - 18 November 2026"
       const found = readItemDate(part);
@@ -516,7 +692,7 @@ function parseApplicationDates(text) {
     if (item && !duplicate) items.push(item);
   });
 
-  return sortDateItems(items).slice(0, 40);
+  return sortDateItems(items).slice(0, maxDates);
 }
 
 // Earliest first
@@ -584,12 +760,88 @@ function intakeLabel(intake) {
     .toLocaleDateString("en-GB", { month: "long", year: "numeric" });
 }
 
-async function searchOfficialPages(apiKey, uniName, course, found) {
+// ----- Version B's question and tools (the experiment) -----
+
+// What version B is told about the search and the applicant. Unlike the
+// normal search, the intake is given as an admissions cycle, the grade
+// level is left out (it changed nothing), and the qualification is used
+// to plan searches.
+function questionForB(uniName, course, website, today, profile) {
+  const intake = profile.intendedStartDate
+    ? intakeLabel(profile.intendedStartDate) + " entry (" + admissionsCycle(profile.intendedStartDate) +
+      "; universities may call it \"" + profile.intendedStartDate.slice(0, 4) + " entry\")"
+    : "not given (use the next intake and say which in Admissions Cycle)";
+  return [
+    "University: " + uniName,
+    "Course: " + course,
+    website ? "Official website: " + website : "",
+    "Today's date: " + today,
+    "Requested intake: " + intake,
+    profile.schoolSystem ? "Qualification: " + profile.schoolSystem + " (use it to plan searches and for Entry Requirements, never to leave dates out)" : "",
+    profile.countryOfResidence ? "Country of residence: " + profile.countryOfResidence + " (never use it to leave dates or routes out)" : "",
+  ].filter(Boolean).join("\n");
+}
+
+// Version B's tools: more searches, plus web fetch to read whole pages.
+// Both are limited to the official website and the official admissions
+// and testing sites. Without a known website, the unofficial sites are blocked.
+function searchToolsForB(domain) {
+  const setup = SEARCH_SETUPS.B;
+  const webSearch = { type: "web_search_20260209", name: "web_search", max_uses: setup.searches };
+  const webFetch = {
+    type: "web_fetch_20260209",
+    name: "web_fetch",
+    max_uses: setup.fetches,
+    max_content_tokens: setup.pageTokens,   // keeps one huge page from costing a fortune
+    citations: { enabled: true },
+  };
+  [webSearch, webFetch].forEach(function (tool) {
+    if (domain) tool.allowed_domains = [domain].concat(OFFICIAL_ADMISSIONS_DOMAINS);
+    else tool.blocked_domains = UNOFFICIAL_DOMAINS;
+  });
+  return [webSearch, webFetch];
+}
+
+// True if a page is on the university's website or an official admissions or testing site
+function isOfficialForB(url, domain) {
+  return (Boolean(domain) && isOnDomain(url, domain)) || OFFICIAL_ADMISSIONS_DOMAINS.some(function (official) {
+    return isOnDomain(url, official);
+  });
+}
+
+// Add up what one reply from Claude used (for the cost shown in the experiment)
+function addUsage(totals, reply) {
+  const usage = reply.usage || {};
+  const tools = usage.server_tool_use || {};
+  totals.inputTokens += usage.input_tokens || 0;
+  totals.outputTokens += usage.output_tokens || 0;
+  totals.cacheWriteTokens += usage.cache_creation_input_tokens || 0;
+  totals.cacheReadTokens += usage.cache_read_input_tokens || 0;
+  totals.searches += tools.web_search_requests || 0;
+  totals.fetches += tools.web_fetch_requests || 0;
+  totals.requests += 1;
+  if (reply.model) totals.model = reply.model;
+}
+
+// The cost of a search in US dollars, worked out from what the API says it
+// used. null if we don't know the price of the model that answered.
+function usageCost(totals) {
+  const prices = MODEL_PRICES[String(totals.model || "").replace(/-\d{8}$/, "")];
+  if (!prices) return null;
+  return (totals.inputTokens * prices.input + totals.outputTokens * prices.output +
+    totals.cacheWriteTokens * prices.cacheWrite + totals.cacheReadTokens * prices.cacheRead) / 1e6 +
+    totals.searches * PRICE_PER_SEARCH;
+}
+
+// version: "" (the normal site), "A" or "B" (the experiment, see above)
+async function searchOfficialPages(apiKey, uniName, course, found, version) {
+  const isB = version === "B";
+  const setup = isB ? SEARCH_SETUPS.B : SEARCH_SETUPS.A;
   const domain = found && found.website ? getDomain(found.website) : "";
   const today = new Date().toISOString().slice(0, 10);
   const profile = getAcademicProfile();
 
-  const question = [
+  const question = isB ? questionForB(uniName, course, domain ? found.website : "", today, profile) : [
     "University: " + uniName,
     "Course: " + course,
     domain ? "Official website: " + found.website : "",
@@ -605,15 +857,18 @@ async function searchOfficialPages(apiKey, uniName, course, found) {
   // and allowed_domains limits it to the official website when we know it.
   const webSearch = { type: "web_search_20260209", name: "web_search", max_uses: 3 };
   if (domain) webSearch.allowed_domains = [domain];
+  const tools = isB ? searchToolsForB(domain) : [webSearch];
 
   let messages = [{ role: "user", content: question }];
   const allBlocks = [];
   let reply = null;
+  const usage = { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0,
+    searches: 0, fetches: 0, requests: 0, model: CLAUDE_MODEL };
 
   // Long searches can pause part-way ("pause_turn"). When that happens we
-  // send back what we have so far and the search carries on, up to 2 times.
-  // (Each time re-sends everything found so far, so more rounds cost more.)
-  for (let round = 0; round < 3; round++) {
+  // send back what we have so far and the search carries on, up to 2 times
+  // (version B: 4 times). Each time re-sends everything found so far, so more rounds cost more.
+  for (let round = 0; round < setup.requests; round++) {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -627,12 +882,13 @@ async function searchOfficialPages(apiKey, uniName, course, found) {
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 8000,
+        max_tokens: setup.maxTokens,
         // "low" effort = faster, shorter searches, as the extractor rules ask
-        output_config: { effort: "low" },
+        // (version B uses the model's normal "medium" effort: more thorough)
+        output_config: { effort: setup.effort },
         fallbacks: "default",
-        system: SEARCH_INSTRUCTIONS,
-        tools: [webSearch],
+        system: setup.instructions,
+        tools: tools,
         messages: messages,
       }),
     });
@@ -640,6 +896,7 @@ async function searchOfficialPages(apiKey, uniName, course, found) {
     if (!response.ok) throw new Error(explainApiError(response.status));
     reply = await response.json();
     allBlocks.push.apply(allBlocks, reply.content || []);
+    addUsage(usage, reply);
 
     if (reply.stop_reason !== "pause_turn") break;
     messages = [messages[0], { role: "assistant", content: reply.content }];
@@ -666,6 +923,12 @@ async function searchOfficialPages(apiKey, uniName, course, found) {
       if (citation.url) sources.push(citation.url);
     });
   });
+  if (isB) {
+    // Version B: next, the whole pages it read
+    allBlocks.forEach(function (block) {
+      if (block.type === "web_fetch_tool_result" && block.content && block.content.url) sources.push(block.content.url);
+    });
+  }
   allBlocks.forEach(function (block) {
     if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
       block.content.forEach(function (result) {
@@ -678,7 +941,9 @@ async function searchOfficialPages(apiKey, uniName, course, found) {
     .slice(0, 3);
 
   // Every application date found (rounds, opening dates, decisions...)
-  const applicationDates = parseApplicationDates(answer.applicationDates);
+  const applicationDates = isB
+    ? parseApplicationDates(answer.applicationDates, { appliesTo: true, maxDates: setup.maxDates })
+    : parseApplicationDates(answer.applicationDates);
 
   // The deadline box needs a full date. If the page only gives a month,
   // we don't make up a day: the box stays empty and the notes say the month.
@@ -702,7 +967,17 @@ async function searchOfficialPages(apiKey, uniName, course, found) {
     notes = ("Application deadline: " + deadlineText + " " + notes).trim();
   }
 
-  return {
+  // Version B always says which admissions cycle the dates are for
+  // (or that the requested intake doesn't exist), at the start of the notes
+  let cycle = "";
+  if (isB) {
+    cycle = cleanAnswer(answer.cycle) || (profile.intendedStartDate
+      ? "Using " + admissionsCycle(profile.intendedStartDate) + " (" + intakeLabel(profile.intendedStartDate) + " entry)."
+      : "The search didn't say which admissions cycle these dates are for.");
+    notes = (cycle + " " + notes).trim();
+  }
+
+  const details = {
     deadline: deadline,
     requirements: cleanAnswer(answer.requirements),
     applicationInfo: cleanAnswer(answer.applicationInfo),
@@ -715,10 +990,24 @@ async function searchOfficialPages(apiKey, uniName, course, found) {
     applicationDates: applicationDates,
     rolling: parseRolling(answer.rolling),   // just a flag, nothing is worked out from it
     // Verified = we knew the official website, and every page used is on it
+    // (version B: or on an official admissions or testing site)
     verified: Boolean(domain) && cleanSources.length > 0 && cleanSources.every(function (url) {
-      return isOnDomain(url, domain);
+      return isB ? isOfficialForB(url, domain) : isOnDomain(url, domain);
     }),
   };
+
+  // The experiment also keeps the admissions cycle and what the search used
+  if (version) {
+    if (isB) details.cycle = cycle;
+    if (!usage.searches) {
+      // (if the API didn't report the searches, count them ourselves)
+      usage.searches = allBlocks.filter(function (block) { return block.type === "server_tool_use" && block.name === "web_search"; }).length;
+      usage.fetches = usage.fetches || allBlocks.filter(function (block) { return block.type === "server_tool_use" && block.name === "web_fetch"; }).length;
+    }
+    usage.cost = usageCost(usage);
+    details.usage = usage;
+  }
+  return details;
 }
 
 
@@ -734,10 +1023,19 @@ const CACHE_DAYS = 7;
 
 // Your academic profile is part of the key: a search for a different
 // start date or school system is a different search
-function searchCacheKey(name, course) {
+// The experiment's versions have their own saved searches ("A|..." and
+// "B|..."), so a search from one version is never used for another, or
+// for the normal site. Version B leaves the grade level out of its key:
+// it isn't sent to Claude, so it can't change the result.
+function searchCacheKey(name, course, version) {
   const p = getAcademicProfile();
-  return [name, course, p.intendedStartDate, p.currentGradeLevel, p.schoolSystem, p.countryOfResidence]
+  if (version === "B") {
+    return ["B", name, course, p.intendedStartDate, p.schoolSystem, p.countryOfResidence]
+      .join("|").toLowerCase().replace(/\s+/g, " ");
+  }
+  const key = [name, course, p.intendedStartDate, p.currentGradeLevel, p.schoolSystem, p.countryOfResidence]
     .join("|").toLowerCase().replace(/\s+/g, " ");
+  return version === "A" ? "a|" + key : key;
 }
 
 function loadSearchCache() {
@@ -794,10 +1092,12 @@ async function runAutoFill(request, onStep) {
   const course = request.course;
   const apiKey = getApiKey();
   const step = onStep || function () {};
+  const version = AUTOFILL_VERSION;   // "" normally; "A" or "B" in the experiment
+  const startedAt = Date.now();
 
   // Use a remembered search if there is one (only for AI searches, since
   // those are the ones that cost money)
-  const cacheKey = searchCacheKey(name, course);
+  const cacheKey = searchCacheKey(name, course, version);
   const cached = apiKey && !request.fresh ? getCachedSearch(cacheKey) : null;
 
   let found = null;
@@ -828,13 +1128,16 @@ async function runAutoFill(request, onStep) {
     if (apiKey) {
       step(1);
       try {
-        details = await searchOfficialPages(apiKey, found ? found.officialName : name, course, found);
+        details = await searchOfficialPages(apiKey, found ? found.officialName : name, course, found, version);
       } catch (error) {
         errorText = error.message || "The online search failed. Try again.";
       }
     }
 
     about = await aboutRequest;
+
+    // The experiment shows how long the whole search took
+    if (details && details.usage) details.usage.runtimeMs = Date.now() - startedAt;
 
     // Remember a successful AI search for next time
     if (details) {
@@ -862,6 +1165,10 @@ async function runAutoFill(request, onStep) {
     rolling: Boolean(details && details.rolling),
     intake: details ? getAcademicProfile().intendedStartDate : "",   // the start date these dates are for
   };
+  // The experiment: which version ran, and what it used (shown under the result)
+  if (version) {
+    result.experiment = { version: version, usage: details ? details.usage || null : null, cycle: details ? details.cycle || "" : "" };
+  }
 
   return { result: result, details: details, errorText: errorText, cachedAt: cached ? cached.savedAt : null };
 }

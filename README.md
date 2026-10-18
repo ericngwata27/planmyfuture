@@ -29,6 +29,13 @@ Opening `index.html` directly also works, but some features (like the sharper 8K
 
 Without a key, auto-fill uses Wikidata and Wikipedia (city, country, website, map position). With a Claude API key (**Auto-fill settings** under the form), it also reads the university's official website for dates and requirements. The key is stored only in your browser and sent only to Anthropic. A backend will take this over later.
 
+**The auto-fill experiment.** Add `?autofill=A` or `?autofill=B` to the address to compare two versions of the search (without it, nothing changes):
+
+- **A**: today's search.
+- **B**: a more thorough search. It runs more searches, reads whole pages (web fetch), follows a checklist (tests, interviews, documents, enrolment), and labels who each date applies to. It only uses official university, admissions and testing sites.
+
+Under the result, both show the run time, the searches, the tokens and the cost, plus every date found (passed ones labelled), with a **Copy for Excel** button. Each version has its own saved searches. Use **Search again** for a second run.
+
 ## Tests
 
 ```bash

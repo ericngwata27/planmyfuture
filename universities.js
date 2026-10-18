@@ -155,11 +155,107 @@ function showLookupResult(result, errorText, cachedAt) {
     error.style.color = "var(--red)";
     box.append(error);
   }
+  // Only in the experiment (?autofill=A or ?autofill=B in the address)
+  if (result.experiment) box.append(experimentResult(result, cachedAt));
 
   lookupStatus.innerHTML = "";
   lookupStatus.append(box);
   lookupStatus.hidden = false;
   refreshIcons();
+}
+
+// ----- The auto-fill experiment's results (see autofill.js, "The A/B experiment") -----
+// Under the result: what the search cost and how long it took, then every
+// date found (passed ones labelled), and a button that copies it all for
+// the Excel sheet, where each date is scored by hand against the screenshots.
+
+// "Passed" if the date is before today (a month on its own: once the month is over)
+function experimentStatus(item) {
+  return itemEndDate(item) < todayText() ? "Passed" : "Upcoming";
+}
+
+// One run as tab-separated rows (Excel puts each part in its own column)
+function experimentRows(result, cachedAt) {
+  const run = result.experiment;
+  const usage = run.usage || {};
+  const runAt = new Date(cachedAt || Date.now()).toISOString();
+  const header = ["Version", "Run at", "University", "Course", "Admissions cycle", "Type", "Campus", "Name", "Applies to",
+    "Date", "Status", "Source", "Runtime (s)", "Searches", "Pages fetched", "Input tokens", "Output tokens", "Cost (USD)"];
+  const runParts = [
+    usage.runtimeMs ? (usage.runtimeMs / 1000).toFixed(1) : "", usage.searches, usage.fetches,
+    usage.inputTokens, usage.outputTokens, typeof usage.cost === "number" ? usage.cost.toFixed(4) : "",
+  ];
+  // (a run that found no dates still gets one row, so its cost and time are recorded)
+  const dates = result.applicationDates.length ? result.applicationDates : [null];
+  const rows = dates.map(function (item) {
+    const parts = item
+      ? [DATE_TYPE_LABELS[item.type] || item.type, item.campus, item.label, item.appliesTo || "", item.date, experimentStatus(item), item.sourceUrl]
+      : ["(no dates found)", "", "", "", "", "", ""];
+    return [run.version, runAt, result.name, result.course, run.cycle].concat(parts, runParts);
+  });
+  return [header].concat(rows).map(function (row) {
+    return row.map(function (part) { return String(part === undefined || part === null ? "" : part).replace(/[\t\n]+/g, " "); }).join("\t");
+  }).join("\n");
+}
+
+function experimentResult(result, cachedAt) {
+  const run = result.experiment;
+  const usage = run.usage;
+  const panel = makeElement("div", "experiment-result");
+  panel.style.marginTop = "12px";
+  panel.append(makeElement("p", "", "Auto-fill experiment: version " + run.version +
+    (cachedAt ? " (saved run, the numbers are from when it ran)" : "")));
+
+  // What the search used, as reported by the Claude API
+  const facts = makeElement("ul", "muted small experiment-usage");
+  if (usage) {
+    const number = function (value) { return Number(value || 0).toLocaleString(); };
+    [
+      "Total runtime: " + (usage.runtimeMs ? (usage.runtimeMs / 1000).toFixed(1) + " s" : "not measured"),
+      "Searches performed: " + number(usage.searches),
+      "Pages fetched: " + number(usage.fetches),
+      "Input tokens: " + number(usage.inputTokens),
+      "Output tokens: " + number(usage.outputTokens),
+      "Estimated API cost: " + (typeof usage.cost === "number"
+        ? "$" + usage.cost.toFixed(3) + " (" + usage.model + ", " + usage.requests + (usage.requests === 1 ? " request)" : " requests)")
+        : "unknown (no price for " + usage.model + ")"),
+    ].forEach(function (text) { facts.append(makeElement("li", "", text)); });
+  } else {
+    facts.append(makeElement("li", "", "No Claude search ran, so there's nothing to measure."));
+  }
+  panel.append(facts);
+
+  if (run.cycle) panel.append(makeElement("p", "experiment-cycle", run.cycle));
+
+  // Every date found
+  const list = makeElement("ol", "small experiment-dates");
+  result.applicationDates.forEach(function (item) {
+    const row = makeElement("li", "", [DATE_TYPE_LABELS[item.type] || item.type, itemText(item),
+      "Status: " + experimentStatus(item)].join(" · "));
+    if (item.sourceUrl) {
+      const link = makeElement("a", "", " source");
+      link.href = item.sourceUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      row.append(link);
+    }
+    list.append(row);
+  });
+  if (result.aiSearched && result.applicationDates.length === 0) list.append(makeElement("li", "", "No dates found."));
+  panel.append(list);
+
+  const copy = makeElement("button", "button button-small experiment-copy", "Copy for Excel");
+  copy.type = "button";
+  copy.addEventListener("click", async function () {
+    try {
+      await navigator.clipboard.writeText(experimentRows(result, cachedAt));
+      showToast("Copied. Paste it into the Excel sheet.", "copy");
+    } catch (error) {
+      showToast("Your browser didn't allow copying.", "circle-alert");
+    }
+  });
+  panel.append(copy);
+  return panel;
 }
 
 // ----- The "Find details" button -----
