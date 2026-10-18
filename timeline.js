@@ -47,6 +47,11 @@ const DATE_TYPE_LABELS = {
   decision: "Decision / results",
   start: "Course starts",
   other: "Other",
+  // Only found by auto-fill version B (the experiment); not in the "Add date" form
+  test: "Test",
+  interview: "Interview",
+  documents: "Documents",
+  enrolment: "Enrolment",
 };
 
 

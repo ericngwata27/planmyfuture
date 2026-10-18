@@ -50,8 +50,9 @@ Inside `university.applicationDates`.
 | `campus` | string | e.g. `Paris`, or `""` if the same for every campus |
 | `date` | date or `YYYY-MM` | When |
 | `approximate` | boolean | `true` when only the month is known |
-| `type` | `opens` \| `deadline` \| `decision` \| `start` \| `other` | What kind of date |
+| `type` | `opens` \| `deadline` \| `decision` \| `start` \| `other` | What kind of date. The auto-fill experiment's version B can also find `test`, `interview`, `documents` and `enrolment` |
 | `sourceUrl` | URL or `""` | Page it came from |
+| `appliesTo` | string, optional | Who the date is for, e.g. `international applicants`. Only version B of the experiment finds this; left out when it's for everyone |
 
 These have no stored ID. The Timeline identifies one by `type|campus|label|date` in lower case (for example `deadline|paris|round 1|2026-11-18`). That's the value stored in `targetId` and `removedDates`. The deadline from the form uses the ID `official`.
 

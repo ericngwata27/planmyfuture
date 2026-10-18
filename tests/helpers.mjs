@@ -32,8 +32,9 @@ export { expect };
 
 // Fill the browser's saved data, then load the site.
 // data = { universities: [...], timeline: {...}, profile: {...}, settings: {...} }
-export async function openWith(page, data = {}) {
-  await page.goto("/");
+// address: e.g. "/?autofill=B" to open the auto-fill experiment
+export async function openWith(page, data = {}, address = "/") {
+  await page.goto(address);
   // Wait until the page has finished loading (and syncing, if signed in)
   await expect(page.locator("#save-status")).not.toHaveAttribute("data-state", "loading", { timeout: 15000 });
   await page.evaluate((data) => {

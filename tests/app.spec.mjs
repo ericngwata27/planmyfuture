@@ -609,3 +609,189 @@ test("the site loads fonts, libraries and pictures only from itself", async ({ p
   ]));
   expect(page.errors).toEqual([]);
 });
+
+
+// ----- The auto-fill experiment (?autofill=A / ?autofill=B) -----
+
+const PROFILE = { intendedStartDate: "2027-09", currentGradeLevel: "Year 13 (Grade 12)", schoolSystem: "Abitur", countryOfResidence: "Germany" };
+
+// Today's answer format (what the normal search and version A ask for)
+const ANSWER_A = { stop_reason: "end_turn", model: "claude-opus-5-5",
+  usage: { input_tokens: 800, output_tokens: 150, server_tool_use: { web_search_requests: 2 } },
+  content: [{ type: "text", text: [
+    "City: Paris",
+    "Country: France",
+    "Application Deadline: 18 November 2026",
+    "Application Dates: deadline | Paris | Round 1 | 18 November 2026 | https://escp.eu/dates",
+    "Rolling Admissions: no",
+  ].join("\n") }] };
+
+// Version B: the search pauses once ("pause_turn"), then answers with
+// tests, enrolment dates, who each date applies to and the admissions cycle
+const ANSWERS_B = [
+  { stop_reason: "pause_turn", model: "claude-opus-5-5",
+    usage: { input_tokens: 1000, output_tokens: 200, server_tool_use: { web_search_requests: 3, web_fetch_requests: 1 } },
+    content: [{ type: "text", text: "Reading the admissions pages." }] },
+  { stop_reason: "end_turn", model: "claude-opus-5-5",
+    usage: { input_tokens: 2000, output_tokens: 500, server_tool_use: { web_search_requests: 2, web_fetch_requests: 2 } },
+    content: [
+      { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url: "https://escp.eu/dates" } },
+      { type: "web_search_tool_result", content: [{ url: "https://esat-tmua.ac.uk/about-the-tests/tara/" }] },
+      { type: "text", text: [
+        "City: Paris",
+        "Country: France",
+        "Admissions Cycle: Using 2027/28 admissions cycle (September 2027 entry).",
+        "Application Deadline: 18 November 2026",
+        "Important Notes: Interviews are online.",
+        "Application Dates:",
+        "opens | - | Applications open | 1 September 2026 | all | https://escp.eu/apply",
+        "test | - | TARA registration deadline | 28 September 2026 | all | https://esat-tmua.ac.uk/about-the-tests/tara/",
+        "deadline | Paris | Round 1 | 18 November 2026 | all | https://escp.eu/dates",
+        "deadline | - | Final deadline | 15 January 2027 | international applicants | https://escp.eu/international",
+        "enrolment | - | Deposit deadline | 1 May 2027 | all | https://escp.eu/enrol",
+        "Rolling Admissions: no",
+      ].join("\n") },
+    ] },
+];
+
+// Answer Claude's requests and keep what the site sent. Version B's
+// requests get the B answers, everything else gets ANSWER_A.
+async function recordClaude(page) {
+  const sent = [];
+  let bReplies = 0;
+  await page.route(/api\.anthropic\.com/, (route) => {
+    const body = JSON.parse(route.request().postData());
+    sent.push(body);
+    const isB = body.tools.some((tool) => tool.name === "web_fetch");
+    return route.fulfill({ json: isB ? ANSWERS_B[Math.min(bReplies++, ANSWERS_B.length - 1)] : ANSWER_A });
+  });
+  return sent;
+}
+
+async function findDetails(page) {
+  await page.fill("#name", "ESCP");
+  await page.fill("#course", "Bachelor in Management");
+  await page.click("#submit-button");
+  await expect(page.locator("#city")).toHaveValue("Paris");
+}
+
+const savedSearchKeys = (page) => page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("future-planner-search-cache") || "{}")));
+
+test("without ?autofill the search is unchanged; A matches it; A, B and normal never share saved searches", async ({ page }) => {
+  await fakeWikidata(page);
+  const sent = await recordClaude(page);
+  await openWith(page, { apiKey: "sk-ant-test", academicProfile: PROFILE });
+
+  // The normal site: today's request, and no experiment panel
+  await findDetails(page);
+  expect(sent).toHaveLength(1);
+  const normal = sent[0];
+  expect(normal.max_tokens).toBe(8000);
+  expect(normal.output_config).toEqual({ effort: "low" });
+  expect(normal.tools).toEqual([{ type: "web_search_20260209", name: "web_search", max_uses: 3, allowed_domains: ["escp.eu"] }]);
+  expect(normal.system).toMatch(/^You are an academic data extractor\./);
+  expect(normal.system).toContain("Stop reading after 3 pages.");
+  expect(normal.messages[0].content).toContain("Current grade level: Year 13 (Grade 12)");
+  await expect(page.locator(".experiment-result")).toHaveCount(0);
+  expect(await savedSearchKeys(page)).toEqual(["escp|bachelor in management|2027-09|year 13 (grade 12)|abitur|germany"]);   // today's key
+
+  // Version A: exactly the same request, but its own saved search
+  await page.goto("/?autofill=A");
+  await findDetails(page);
+  expect(sent).toHaveLength(2);                                     // the normal saved search wasn't used
+  expect(sent[1]).toEqual(normal);
+  await expect(page.locator(".experiment-result")).toContainText("Auto-fill experiment: version A");
+  await expect(page.locator(".experiment-usage")).toContainText("Searches performed: 2");
+
+  // Version B: a different request, and its own saved search too
+  await page.goto("/?autofill=B");
+  await findDetails(page);
+  expect(sent).toHaveLength(4);                                     // two requests (it paused once)
+  expect(sent[2].tools.map((tool) => tool.type)).toEqual(["web_search_20260209", "web_fetch_20260209"]);
+  const keys = await savedSearchKeys(page);
+  expect(keys.filter((key) => key.startsWith("a|"))).toHaveLength(1);
+  expect(keys.filter((key) => key.startsWith("b|"))).toHaveLength(1);
+  expect(keys.find((key) => key.startsWith("b|"))).not.toContain("year 13");   // grade level doesn't split B's saved searches
+
+  // Back to A: its own saved search, never B's dates
+  await page.goto("/?autofill=A");
+  await findDetails(page);
+  expect(sent).toHaveLength(4);
+  await expect(page.locator(".experiment-result")).toContainText("saved run");
+  await expect(page.locator(".experiment-dates li")).toHaveCount(1);
+  await expect(page.locator(".experiment-dates")).not.toContainText("TARA");
+
+  // And the normal site uses its own saved search, with no panel
+  await page.goto("/");
+  await findDetails(page);
+  expect(sent).toHaveLength(4);
+  await expect(page.locator(".experiment-result")).toHaveCount(0);
+  await expect(page.locator("#notes")).toHaveValue("");
+  expect(page.errors).toEqual([]);
+});
+
+test("?autofill=B searches more thoroughly, labels every date and shows what the search cost", async ({ page }) => {
+  await fakeWikidata(page);
+  const sent = await recordClaude(page);
+  await openWith(page, { apiKey: "sk-ant-test", academicProfile: PROFILE }, "/?autofill=B");
+  await findDetails(page);
+
+  // The request: bigger budget, more searches, web fetch, official sites only
+  expect(sent).toHaveLength(2);
+  const request = sent[0];
+  expect(request.max_tokens).toBe(16000);
+  expect(request.output_config).toEqual({ effort: "medium" });
+  const [search, fetchTool] = request.tools;
+  expect(search).toMatchObject({ type: "web_search_20260209", max_uses: 10 });
+  expect(fetchTool).toMatchObject({ type: "web_fetch_20260209", name: "web_fetch", max_uses: 6, max_content_tokens: 20000 });
+  for (const tool of request.tools) {
+    expect(tool.allowed_domains).toEqual(expect.arrayContaining(["escp.eu", "ucas.com", "cao.ie", "collegeboard.org", "esat-tmua.ac.uk"]));
+  }
+  expect(request.system).toContain("Never infer a date. Never estimate a deadline. Never derive deadlines from prior years.");
+  expect(request.system).toContain("Do not stop once you have found the application deadline.");
+  expect(request.system).not.toContain("3000 characters");
+  const question = request.messages[0].content;
+  expect(question).toContain("Requested intake: September 2027 entry (2027/28 admissions cycle");
+  expect(question).toContain("Qualification: Abitur");
+  expect(question).not.toContain("grade level");
+
+  // The "carry on" request sends back the paused reply
+  expect(sent[1].messages).toHaveLength(2);
+  expect(sent[1].messages[1]).toEqual({ role: "assistant", content: ANSWERS_B[0].content });
+
+  // What it used, added up from both replies (cost: tokens + $0.01 per search)
+  const usage = page.locator(".experiment-usage");
+  await expect(usage).toContainText("Total runtime:");
+  await expect(usage).toContainText("Searches performed: 5");
+  await expect(usage).toContainText("Pages fetched: 3");
+  await expect(usage).toContainText("Input tokens: 3,000");
+  await expect(usage).toContainText("Output tokens: 700");
+  await expect(usage).toContainText("Estimated API cost: $0.076 (claude-opus-5-5, 2 requests)");
+
+  // Every date, with who it's for, and passed ones labelled
+  const dates = page.locator(".experiment-dates li");
+  await expect(dates).toHaveCount(5);
+  await expect(dates.filter({ hasText: "TARA registration deadline" })).toContainText("Status: Passed");
+  await expect(dates.filter({ hasText: "Final deadline" })).toContainText("international applicants");
+  await expect(dates.filter({ hasText: "Final deadline" })).toContainText("Status: Upcoming");
+  await expect(page.locator(".experiment-cycle")).toHaveText("Using 2027/28 admissions cycle (September 2027 entry).");
+  await expect(page.locator("#notes")).toHaveValue(/^Using 2027\/28 admissions cycle/);
+  await expect(page.locator(".source-badge")).toContainText("Verified from official sources");   // escp.eu + the TARA site
+
+  // The rows copied for the Excel sheet
+  const rows = (await page.evaluate(() => experimentRows(lookup, null))).split("\n").map((row) => row.split("\t"));
+  expect(rows).toHaveLength(6);
+  expect(rows[0].slice(0, 12)).toEqual(["Version", "Run at", "University", "Course", "Admissions cycle", "Type", "Campus", "Name", "Applies to", "Date", "Status", "Source"]);
+  expect(rows[2]).toEqual(expect.arrayContaining(["B", "Test", "TARA registration deadline", "2026-09-28", "Passed", "5", "3", "3000", "700", "0.0760"]));
+
+  // Added to the map, the new types and "applies to" are saved
+  await page.click("#submit-button");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("future-planner-universities")));
+  expect(saved[0].applicationDates).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: "test", label: "TARA registration deadline", date: "2026-09-28" }),
+    expect.objectContaining({ type: "deadline", label: "Final deadline", appliesTo: "international applicants" }),
+    expect.objectContaining({ type: "enrolment", label: "Deposit deadline" }),
+  ]));
+  expect(saved[0].applicationDates.find((d) => d.label === "Round 1")).not.toHaveProperty("appliesTo");
+  expect(page.errors).toEqual([]);
+});
