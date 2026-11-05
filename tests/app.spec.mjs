@@ -633,7 +633,8 @@ const ANSWERS_B = [
     usage: { input_tokens: 1000, output_tokens: 200, server_tool_use: { web_search_requests: 3, web_fetch_requests: 1 } },
     content: [{ type: "text", text: "Reading the admissions pages." }] },
   { stop_reason: "end_turn", model: "claude-opus-5-5",
-    usage: { input_tokens: 2000, output_tokens: 500, server_tool_use: { web_search_requests: 2, web_fetch_requests: 2 } },
+    usage: { input_tokens: 2000, output_tokens: 500, cache_creation_input_tokens: 1000, cache_read_input_tokens: 10000,
+      server_tool_use: { web_search_requests: 2, web_fetch_requests: 2 } },
     content: [
       { type: "web_fetch_tool_result", content: { type: "web_fetch_result", url: "https://escp.eu/dates" } },
       { type: "web_search_tool_result", content: [{ url: "https://esat-tmua.ac.uk/about-the-tests/tara/" }] },
@@ -711,7 +712,7 @@ test("without ?autofill the search is unchanged; A matches it; A, B and normal n
   const keys = await savedSearchKeys(page);
   expect(keys.filter((key) => key.startsWith("a|"))).toHaveLength(1);
   expect(keys.filter((key) => key.startsWith("b|"))).toHaveLength(1);
-  expect(keys.find((key) => key.startsWith("b|"))).not.toContain("year 13");   // grade level doesn't split B's saved searches
+  expect(keys.find((key) => key.startsWith("b|"))).toBe("b|escp|bachelor in management|2027-09");   // only the intake: no profile
 
   // Back to A: its own saved search, never B's dates
   await page.goto("/?autofill=A");
@@ -730,7 +731,7 @@ test("without ?autofill the search is unchanged; A matches it; A, B and normal n
   expect(page.errors).toEqual([]);
 });
 
-test("?autofill=B searches more thoroughly, labels every date and shows what the search cost", async ({ page }) => {
+test("?autofill=B searches thoroughly for every student, labels every date and shows what the search cost", async ({ page }) => {
   await fakeWikidata(page);
   const sent = await recordClaude(page);
   await openWith(page, { apiKey: "sk-ant-test", academicProfile: PROFILE }, "/?autofill=B");
@@ -747,13 +748,22 @@ test("?autofill=B searches more thoroughly, labels every date and shows what the
   for (const tool of request.tools) {
     expect(tool.allowed_domains).toEqual(expect.arrayContaining(["escp.eu", "ucas.com", "cao.ie", "collegeboard.org", "esat-tmua.ac.uk"]));
   }
-  expect(request.system).toContain("Never infer a date. Never estimate a deadline. Never derive deadlines from prior years.");
-  expect(request.system).toContain("Do not stop once you have found the application deadline.");
-  expect(request.system).not.toContain("3000 characters");
+  const instructions = request.system[0].text;
+  expect(instructions).toContain("Never infer a date. Never estimate a deadline. Never derive deadlines from prior years.");
+  expect(instructions).toContain("Do not stop once you have found the application deadline.");
+  expect(instructions).not.toContain("3000 characters");
   const question = request.messages[0].content;
   expect(question).toContain("Requested intake: September 2027 entry (2027/28 admissions cycle");
-  expect(question).toContain("Qualification: Abitur");
+  // Profile-free: the same search for every student (only the intake is sent)
+  expect(question).not.toContain("Abitur");
+  expect(question).not.toContain("Germany");
   expect(question).not.toContain("grade level");
+  expect(instructions).toContain("only these labels");
+  expect(instructions).toContain("Leave out dates of a central application system that apply to every course");
+  // Caching: the instructions are marked, and the rest is cached automatically
+  expect(request.cache_control).toEqual({ type: "ephemeral" });
+  expect(request.system).toEqual([expect.objectContaining({ type: "text", cache_control: { type: "ephemeral" } })]);
+  expect(request.fallbacks).toBe("default");
 
   // The "carry on" request sends back the paused reply
   expect(sent[1].messages).toHaveLength(2);
@@ -766,7 +776,10 @@ test("?autofill=B searches more thoroughly, labels every date and shows what the
   await expect(usage).toContainText("Pages fetched: 3");
   await expect(usage).toContainText("Input tokens: 3,000");
   await expect(usage).toContainText("Output tokens: 700");
-  await expect(usage).toContainText("Estimated API cost: $0.076 (claude-opus-5-5, 2 requests)");
+  await expect(usage).toContainText("Cache write tokens: 1,000");
+  await expect(usage).toContainText("Cache read tokens: 10,000");
+  // 3,000 × $4 + 700 × $20 + 1,000 × $5 + 10,000 × $0.20 per million, + 5 searches × $0.01
+  await expect(usage).toContainText("Estimated API cost: $0.083 (claude-opus-5-5, 2 requests)");
 
   // Every date, with who it's for, and passed ones labelled
   const dates = page.locator(".experiment-dates li");
@@ -782,7 +795,7 @@ test("?autofill=B searches more thoroughly, labels every date and shows what the
   const rows = (await page.evaluate(() => experimentRows(lookup, null))).split("\n").map((row) => row.split("\t"));
   expect(rows).toHaveLength(6);
   expect(rows[0].slice(0, 12)).toEqual(["Version", "Run at", "University", "Course", "Admissions cycle", "Type", "Campus", "Name", "Applies to", "Date", "Status", "Source"]);
-  expect(rows[2]).toEqual(expect.arrayContaining(["B", "Test", "TARA registration deadline", "2026-09-28", "Passed", "5", "3", "3000", "700", "0.0760"]));
+  expect(rows[2]).toEqual(expect.arrayContaining(["B", "Test", "TARA registration deadline", "2026-09-28", "Passed", "5", "3", "3000", "700", "1000", "10000", "0.0830"]));
 
   // Added to the map, the new types and "applies to" are saved
   await page.click("#submit-button");
@@ -793,5 +806,68 @@ test("?autofill=B searches more thoroughly, labels every date and shows what the
     expect.objectContaining({ type: "enrolment", label: "Deposit deadline" }),
   ]));
   expect(saved[0].applicationDates.find((d) => d.label === "Round 1")).not.toHaveProperty("appliesTo");
+  expect(page.errors).toEqual([]);
+});
+
+test("?autofill=C reads less and ?autofill=D uses Sonnet; everything else stays like B", async ({ page }) => {
+  await fakeWikidata(page);
+  const sent = await recordClaude(page);
+  await openWith(page, { apiKey: "sk-ant-test", academicProfile: PROFILE }, "/?autofill=B");
+  await findDetails(page);
+  const b = sent[0];
+
+  // C: only the reading limits change (fewer searches and pages, each page still read deeply)
+  await page.goto("/?autofill=C");
+  await findDetails(page);
+  const c = sent[sent.length - 1];
+  expect(c.model).toBe("claude-opus-5-5");
+  expect(c.tools[0]).toMatchObject({ type: "web_search_20260209", max_uses: 6 });
+  expect(c.tools[1]).toMatchObject({ type: "web_fetch_20260209", max_uses: 4, max_content_tokens: 12000 });
+  expect(c.system).toEqual(b.system);
+  expect(c.messages[0]).toEqual(b.messages[0]);
+  expect(c.cache_control).toEqual({ type: "ephemeral" });
+  expect({ ...c, tools: null, messages: null }).toEqual({ ...b, tools: null, messages: null });
+  await expect(page.locator(".experiment-result")).toContainText("Auto-fill experiment: version C");
+
+  // D: only the model changes (and no backup-model setting, which isn't confirmed for Sonnet)
+  await page.goto("/?autofill=D");
+  await findDetails(page);
+  const d = sent[sent.length - 1];
+  expect(d.model).toBe("claude-sonnet-5-5");
+  expect(d).not.toHaveProperty("fallbacks");
+  expect(d.tools).toEqual(c.tools);
+  expect(d.system).toEqual(c.system);
+  expect({ ...d, model: null, fallbacks: null, messages: null }).toEqual({ ...c, model: null, fallbacks: null, messages: null });
+  await expect(page.locator(".experiment-result")).toContainText("Auto-fill experiment: version D");
+
+  // Each version has its own saved searches, keyed only by the intake
+  const keys = await savedSearchKeys(page);
+  for (const version of ["b", "c", "d"]) expect(keys).toContain(version + "|escp|bachelor in management|2027-09");
+  expect(page.errors).toEqual([]);
+});
+
+test("adding a university and course you already have updates it instead of adding a second one", async ({ page }) => {
+  await fakeWikidata(page);
+  await fakeClaude(page);
+  await openWith(page, { apiKey: "sk-ant-test" });
+  await addUniversity(page, "ESCP", "Bachelor in Management");
+  await expect(page.locator("#uni-list .uni-card")).toHaveCount(1);
+
+  // Cancel: nothing is added
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await addUniversity(page, "escp", "bachelor in management");
+  await expect(page.locator("#form-message")).toContainText("you already have this university and course");
+  await expect(page.locator("#uni-list .uni-card")).toHaveCount(1);
+
+  // OK: the existing one is updated, keeping its name as first written
+  await page.reload();
+  let message = "";
+  page.once("dialog", (dialog) => { message = dialog.message(); dialog.accept(); });
+  await addUniversity(page, "escp", "bachelor in management");
+  expect(message).toContain("You already have ESCP – Bachelor in Management");
+  await expect(page.locator("#uni-list .uni-card")).toHaveCount(1);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("future-planner-universities")));
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ name: "ESCP", course: "Bachelor in Management", deadline: "2026-11-18" });
   expect(page.errors).toEqual([]);
 });

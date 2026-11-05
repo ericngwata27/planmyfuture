@@ -180,10 +180,11 @@ function experimentRows(result, cachedAt) {
   const usage = run.usage || {};
   const runAt = new Date(cachedAt || Date.now()).toISOString();
   const header = ["Version", "Run at", "University", "Course", "Admissions cycle", "Type", "Campus", "Name", "Applies to",
-    "Date", "Status", "Source", "Runtime (s)", "Searches", "Pages fetched", "Input tokens", "Output tokens", "Cost (USD)"];
+    "Date", "Status", "Source", "Runtime (s)", "Searches", "Pages fetched", "Input tokens", "Output tokens",
+    "Cache write tokens", "Cache read tokens", "Cost (USD)"];
   const runParts = [
     usage.runtimeMs ? (usage.runtimeMs / 1000).toFixed(1) : "", usage.searches, usage.fetches,
-    usage.inputTokens, usage.outputTokens, typeof usage.cost === "number" ? usage.cost.toFixed(4) : "",
+    usage.inputTokens, usage.outputTokens, usage.cacheWriteTokens, usage.cacheReadTokens, typeof usage.cost === "number" ? usage.cost.toFixed(4) : "",
   ];
   // (a run that found no dates still gets one row, so its cost and time are recorded)
   const dates = result.applicationDates.length ? result.applicationDates : [null];
@@ -216,6 +217,9 @@ function experimentResult(result, cachedAt) {
       "Pages fetched: " + number(usage.fetches),
       "Input tokens: " + number(usage.inputTokens),
       "Output tokens: " + number(usage.outputTokens),
+      // (B, C and D: text saved to the cache, and cached text read again at a much lower price)
+      "Cache write tokens: " + number(usage.cacheWriteTokens),
+      "Cache read tokens: " + number(usage.cacheReadTokens),
       "Estimated API cost: " + (typeof usage.cost === "number"
         ? "$" + usage.cost.toFixed(3) + " (" + usage.model + ", " + usage.requests + (usage.requests === 1 ? " request)" : " requests)")
         : "unknown (no price for " + usage.model + ")"),
@@ -432,6 +436,16 @@ cancelEditButton.addEventListener("click", function () {
   showFormMessage("");
 });
 
+// A saved university with the same course and the same name (or the same
+// official website), ignoring capitals and extra spaces. null if there's none.
+function findSameUniversity(data, found) {
+  const same = function (a, b) { return String(a || "").trim().replace(/\s+/g, " ").toLowerCase() === String(b || "").trim().replace(/\s+/g, " ").toLowerCase(); };
+  const website = found && found.website ? found.website : "";
+  return state.universities.find(function (uni) {
+    return same(uni.course, data.course) && (same(uni.name, data.name) || (website !== "" && same(uni.website, website)));
+  }) || null;
+}
+
 // ----- Submitting the form -----
 // First press (no search yet): run the search.
 // Second press: save the university and add its pin.
@@ -446,7 +460,23 @@ form.addEventListener("submit", async function (event) {
   const data = readForm();
   if (!validateForm(data)) return;
 
-  const oldUni = editingId ? findUniversity(editingId) : null;
+  // Adding a university and course you already have? Update that one
+  // instead of making a second entry (your status, milestones and planned
+  // date stay, because they belong to it).
+  let oldUni = editingId ? findUniversity(editingId) : null;
+  if (!oldUni) {
+    const twin = findSameUniversity(data, lookup);
+    if (twin) {
+      if (!confirm("You already have " + twin.name + " – " + twin.course + ". Update it with these new details?\n\n" +
+          "Your status, milestones and planned date stay as they are.")) {
+        showFormMessage("Not added: you already have this university and course. Change the course to add another one.", "error");
+        return;
+      }
+      oldUni = twin;
+      data.name = twin.name;       // keep how you wrote it the first time
+      data.course = twin.course;
+    }
+  }
 
   // Extra details from the search that don't have their own box
   if (lookup) {
