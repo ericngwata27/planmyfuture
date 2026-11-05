@@ -202,20 +202,25 @@ const SEARCH_INSTRUCTIONS = [
 ].join("\n");
 
 // ----- The A/B experiment -----
-// Only runs when the address ends in ?autofill=A or ?autofill=B. Without
-// it the site works exactly as above (normal visitors never see this).
+// Only runs when the address ends in ?autofill=A, B, C or D. Without it
+// the site works exactly as above (normal visitors never see this).
 //   A = today's search (the instructions above), with its own saved searches
 //       and the cost/time shown under the result
-//   B = a more thorough search: more searches, whole pages read (web fetch),
-//       a checklist, and every applicant route labelled (the instructions below)
+//   B = a thorough search: more searches, whole pages read (web fetch), a
+//       checklist, every applicant route labelled (the instructions below).
+//       It's the same for every student (no profile, only the intake), the way
+//       the shared search on the server will work, and it uses caching
+//   C = B, but reading less (fewer searches and pages): does that lose dates?
+//   D = C on the cheaper Sonnet model: does that lose dates?
+// Each step changes one thing, so if quality drops we know why.
 // The results are scored by hand against the screenshots and the Excel sheet.
 function readAutofillVersion() {
   const value = (new URLSearchParams(window.location.search).get("autofill") || "").toUpperCase();
-  return value === "A" || value === "B" ? value : "";
+  return ["A", "B", "C", "D"].indexOf(value) !== -1 ? value : "";
 }
 const AUTOFILL_VERSION = readAutofillVersion();   // "" = the normal site
 
-// Official sites version B may use besides the university's own website.
+// Official sites versions B, C and D may use besides the university's own website.
 // Each one was checked to be the official site (October 2026).
 const OFFICIAL_ADMISSIONS_DOMAINS = [
   // Central and government application systems
@@ -241,7 +246,7 @@ const OFFICIAL_ADMISSIONS_DOMAINS = [
   "esat-tmua.ac.uk",          // TARA, TMUA, ESAT (UAT-UK)
 ];
 
-// Sites version B must never use when we don't know the official website
+// Sites versions B, C and D must never use when we don't know the official website
 // (then it can't be limited to the list above)
 const UNOFFICIAL_DOMAINS = [
   "reddit.com", "quora.com", "topuniversities.com", "timeshighereducation.com", "usnews.com",
@@ -262,7 +267,7 @@ const SEARCH_INSTRUCTIONS_B = [
   "How to work:",
   "- Search, then open the most relevant official pages with web fetch to read them in full: long pages, date tables and expandable or \"show more\" sections. Search results alone often miss dates.",
   "- Do not stop once you have found the application deadline. Go through the whole checklist below.",
-  "- Use the applicant's qualification to plan searches, for example \"[University] German Abitur requirements\" and \"[University] admissions test requirements\". Use it to find more, never to leave anything out.",
+  "- This search is shared by every student, so cover every route, campus and applicant group. Plan searches such as \"[University] [course] application deadlines\", \"[University] international applicants\", \"[University] [course] admissions test\" and \"[University] [course] entry requirements\".",
   "",
   "Checklist (look for each one):",
   "- Application: opening date, application deadline, programme-specific deadlines, intake-specific deadlines, every round (early, priority, final), differences for domestic and international (or EU and non-EU) applicants, decision or result dates, course start.",
@@ -283,8 +288,10 @@ const SEARCH_INSTRUCTIONS_B = [
   "- If no intake is given, use the next intake that is open for applications (or opens next), and write in Admissions Cycle which one, for example: \"Using 2027/28 admissions cycle (September 2027 entry)\".",
   "",
   "Applicant routes:",
-  "- Give the deadlines for ALL applicant groups (for example domestic, international, EU, non-EU). Never leave a group out because of the applicant's profile.",
-  "- Write who each date applies to.",
+  "- Give the deadlines for ALL applicant groups and routes (for example domestic, international, EU, non-EU, UCAS, direct). Never leave one out.",
+  "- Write who each date applies to, using the labels listed under Application Dates.",
+  "- If the university decides your campus or route from your country of residence, citizenship or qualification, describe that rule in Important Notes (for example: \"Applicants living in Germany apply through the Berlin campus\").",
+  "- Leave out dates of a central application system that apply to every course in that system (for example UCAS Clearing, UCAS Extra and reply dates), unless the course's own pages list them. Keep that system's deadlines for this course.",
   "",
   "Return plain text with these sections, each on its own line as 'Section: value', using exactly these section names:",
   "University:",
@@ -305,29 +312,33 @@ const SEARCH_INSTRUCTIONS_B = [
   "- If information is missing, write \"Not available\".",
   "- Admissions Cycle: the cycle you gave dates for (see above), in one sentence.",
   "- Application Deadline: the next application deadline that hasn't passed yet, with day, month and year (for example 14 January 2027).",
-  "- Entry Requirements: for the applicant's qualification when the pages list it, including required tests. Up to 4 sentences.",
+  "- Entry Requirements: the general requirements, plus the requirements for each qualification where the pages list them (for example IB, A-levels, Abitur), including required tests and English scores. Up to 5 sentences.",
   "- How to Apply: the application route and portal, in up to 3 sentences.",
   "- Application Dates: list EVERY date from the checklist, in date order, one per line. " +
     "Write each one as: type | campus | name | date | applies to | page URL. " +
     "type is one of: opens, deadline, decision, start, test, interview, documents, enrolment, other. " +
     "campus is the campus name, or - if the date is the same for every campus. " +
-    "name is short, for example: Round 1, Final deadline, TARA registration deadline, Deposit deadline. " +
-    "applies to is who the date is for (for example international applicants, EU applicants), or all. " +
+    "name is short (at most 6 words), for example: Round 1, Final deadline, TARA registration deadline, Deposit deadline. " +
+    "applies to is who the date is for, using only these labels (join two with +, for example: international + UCAS route): " +
+    "all, domestic, international, EU/EEA, non-EU/EEA, UCAS route, Common App route, Parcoursup route, direct route. " +
+    "If none of them fits, write other: and up to 4 words. " +
     "page URL is the official page where you found the date.",
   "  Example:",
   "  opens | - | Applications open | 1 September 2026 | all | https://www.example.edu/apply",
   "  deadline | Paris | Round 1 | 18 November 2026 | all | https://www.example.edu/dates",
-  "  deadline | - | Final deadline | 15 January 2027 | international applicants | https://www.example.edu/international",
+  "  deadline | - | Final deadline | 15 January 2027 | international | https://www.example.edu/international",
   "  test | - | Admissions test registration deadline | 1 October 2026 | all | https://www.example.org/test-dates",
   "  (These example dates are made up: never copy them.)",
-  "- Rolling Admissions: write yes if applications are reviewed as they arrive or places are filled in order, otherwise no.",
+  "- Rolling Admissions: write yes only if an official page says applications are assessed on a rolling basis or places are filled as applications arrive. Fixed rounds with deadlines are not rolling: write no.",
   "- Use plain text only - no markdown.",
 ].join("\n");
 
-// Everything that differs between the normal search (A) and version B
+// Everything that differs between the versions
 const SEARCH_SETUPS = {
-  A: { instructions: SEARCH_INSTRUCTIONS, maxTokens: 8000, effort: "low", requests: 3, maxDates: 40 },
+  A: { model: CLAUDE_MODEL, instructions: SEARCH_INSTRUCTIONS, maxTokens: 8000, effort: "low", requests: 3, maxDates: 40 },
   B: {
+    model: CLAUDE_MODEL,
+    thorough: true,          // B's instructions, tools and answer format
     instructions: SEARCH_INSTRUCTIONS_B,
     maxTokens: 16000,
     effort: "medium",        // the model's normal effort: more thorough than "low"
@@ -336,8 +347,15 @@ const SEARCH_SETUPS = {
     searches: 10,            // web searches per request
     fetches: 6,              // whole pages read per request
     pageTokens: 20000,       // a long page is cut off after about this many tokens
+    caching: true,           // text Claude reads again costs much less (see searchOfficialPages)
   },
 };
+// C: B reading less. Fewer pages, but each still read deeply (date tables
+// are often near the bottom of long pages).
+SEARCH_SETUPS.C = Object.assign({}, SEARCH_SETUPS.B, { searches: 6, fetches: 4, pageTokens: 12000 });
+// D: C on the cheaper Sonnet model. (Without "fallbacks": that backup
+// setting isn't confirmed for Sonnet, and a rejected request would waste a run.)
+SEARCH_SETUPS.D = Object.assign({}, SEARCH_SETUPS.C, { model: "claude-sonnet-5-5", fallbacks: false });
 
 // Prices in US dollars, to show what a search cost (from Anthropic's price list).
 // Tokens are priced per million; each web search costs $10 per 1,000.
@@ -762,10 +780,10 @@ function intakeLabel(intake) {
 
 // ----- Version B's question and tools (the experiment) -----
 
-// What version B is told about the search and the applicant. Unlike the
-// normal search, the intake is given as an admissions cycle, the grade
-// level is left out (it changed nothing), and the qualification is used
-// to plan searches.
+// What versions B, C and D are told. Unlike the normal search, the intake
+// is given as an admissions cycle, and nothing else about the student is
+// sent: the result covers every route and campus, so one search can later
+// be shared by every student (the site picks out what fits each one).
 function questionForB(uniName, course, website, today, profile) {
   const intake = profile.intendedStartDate
     ? intakeLabel(profile.intendedStartDate) + " entry (" + admissionsCycle(profile.intendedStartDate) +
@@ -777,16 +795,14 @@ function questionForB(uniName, course, website, today, profile) {
     website ? "Official website: " + website : "",
     "Today's date: " + today,
     "Requested intake: " + intake,
-    profile.schoolSystem ? "Qualification: " + profile.schoolSystem + " (use it to plan searches and for Entry Requirements, never to leave dates out)" : "",
-    profile.countryOfResidence ? "Country of residence: " + profile.countryOfResidence + " (never use it to leave dates or routes out)" : "",
   ].filter(Boolean).join("\n");
 }
 
-// Version B's tools: more searches, plus web fetch to read whole pages.
-// Both are limited to the official website and the official admissions
-// and testing sites. Without a known website, the unofficial sites are blocked.
-function searchToolsForB(domain) {
-  const setup = SEARCH_SETUPS.B;
+// The tools for B, C and D: more searches, plus web fetch to read whole
+// pages (how many depends on the version's setup). Both are limited to the
+// official website and the official admissions and testing sites. Without
+// a known website, the unofficial sites are blocked.
+function searchToolsForB(domain, setup) {
   const webSearch = { type: "web_search_20260209", name: "web_search", max_uses: setup.searches };
   const webFetch = {
     type: "web_fetch_20260209",
@@ -833,10 +849,38 @@ function usageCost(totals) {
     totals.searches * PRICE_PER_SEARCH;
 }
 
-// version: "" (the normal site), "A" or "B" (the experiment, see above)
+// What's sent to Claude in each request
+function searchRequestBody(setup, tools, messages) {
+  const body = {
+    model: setup.model,
+    max_tokens: setup.maxTokens,
+    // "low" effort = faster, shorter searches, as the extractor rules ask
+    // (versions B, C and D use the model's normal "medium" effort: more thorough)
+    output_config: { effort: setup.effort },
+    fallbacks: "default",
+    system: setup.instructions,
+    tools: tools,
+    messages: messages,
+  };
+  if (setup.fallbacks === false) delete body.fallbacks;
+
+  // Caching (B, C and D). During one search Claude re-reads everything found
+  // so far after every step. With caching on, text it has read before costs
+  // much less (Opus: $0.20 instead of $4 per million tokens); saving text to
+  // the cache the first time costs a bit more ($5). The instructions are
+  // cached, and the cache then follows the conversation (and the pages the
+  // searches bring in) automatically.
+  if (setup.caching) {
+    body.system = [{ type: "text", text: setup.instructions, cache_control: { type: "ephemeral" } }];
+    body.cache_control = { type: "ephemeral" };
+  }
+  return body;
+}
+
+// version: "" (the normal site), or "A" to "D" (the experiment, see above)
 async function searchOfficialPages(apiKey, uniName, course, found, version) {
-  const isB = version === "B";
-  const setup = isB ? SEARCH_SETUPS.B : SEARCH_SETUPS.A;
+  const setup = SEARCH_SETUPS[version] || SEARCH_SETUPS.A;   // the normal site uses A's setup
+  const isB = Boolean(setup.thorough);   // B, C and D
   const domain = found && found.website ? getDomain(found.website) : "";
   const today = new Date().toISOString().slice(0, 10);
   const profile = getAcademicProfile();
@@ -857,13 +901,13 @@ async function searchOfficialPages(apiKey, uniName, course, found, version) {
   // and allowed_domains limits it to the official website when we know it.
   const webSearch = { type: "web_search_20260209", name: "web_search", max_uses: 3 };
   if (domain) webSearch.allowed_domains = [domain];
-  const tools = isB ? searchToolsForB(domain) : [webSearch];
+  const tools = isB ? searchToolsForB(domain, setup) : [webSearch];
 
   let messages = [{ role: "user", content: question }];
   const allBlocks = [];
   let reply = null;
   const usage = { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0,
-    searches: 0, fetches: 0, requests: 0, model: CLAUDE_MODEL };
+    searches: 0, fetches: 0, requests: 0, model: setup.model };
 
   // Long searches can pause part-way ("pause_turn"). When that happens we
   // send back what we have so far and the search carries on, up to 2 times
@@ -880,17 +924,7 @@ async function searchOfficialPages(apiKey, uniName, course, found, version) {
         // Needed because this request comes straight from a web page
         "anthropic-dangerous-direct-browser-access": "true",
       },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: setup.maxTokens,
-        // "low" effort = faster, shorter searches, as the extractor rules ask
-        // (version B uses the model's normal "medium" effort: more thorough)
-        output_config: { effort: setup.effort },
-        fallbacks: "default",
-        system: setup.instructions,
-        tools: tools,
-        messages: messages,
-      }),
+      body: JSON.stringify(searchRequestBody(setup, tools, messages)),
     });
 
     if (!response.ok) throw new Error(explainApiError(response.status));
@@ -1023,15 +1057,15 @@ const CACHE_DAYS = 7;
 
 // Your academic profile is part of the key: a search for a different
 // start date or school system is a different search
-// The experiment's versions have their own saved searches ("A|..." and
-// "B|..."), so a search from one version is never used for another, or
-// for the normal site. Version B leaves the grade level out of its key:
-// it isn't sent to Claude, so it can't change the result.
+// The experiment's versions have their own saved searches ("a|...",
+// "b|...", "c|...", "d|..."), so a search from one version is never used for
+// another, or for the normal site. B, C and D only send the intake, so only
+// the intake is in their key: a different school system or grade level
+// can't change their result (like the shared search planned for the server).
 function searchCacheKey(name, course, version) {
   const p = getAcademicProfile();
-  if (version === "B") {
-    return ["B", name, course, p.intendedStartDate, p.schoolSystem, p.countryOfResidence]
-      .join("|").toLowerCase().replace(/\s+/g, " ");
+  if (SEARCH_SETUPS[version] && SEARCH_SETUPS[version].thorough) {
+    return [version, name, course, p.intendedStartDate].join("|").toLowerCase().replace(/\s+/g, " ");
   }
   const key = [name, course, p.intendedStartDate, p.currentGradeLevel, p.schoolSystem, p.countryOfResidence]
     .join("|").toLowerCase().replace(/\s+/g, " ");
