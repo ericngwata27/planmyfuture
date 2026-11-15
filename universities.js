@@ -165,16 +165,43 @@ function showLookupResult(result, errorText, cachedAt) {
 }
 
 // ----- The auto-fill experiment's results (see autofill.js, "The A/B experiment") -----
-// Under the result: what the search cost and how long it took, then every
-// date found (passed ones labelled), and a button that copies it all for
-// the Excel sheet, where each date is scored by hand against the screenshots.
+// Under the result: what the search cost and how long it took, every date
+// found (passed ones labelled), the form fields, the pages the AI read and
+// its full answer, and a button that copies it all for the scoring sheet,
+// where each date is scored by hand against the screenshots.
 
-// "Passed" if the date is before today (a month on its own: once the month is over)
+// "Passed" if the date is before today (a month on its own: once the month is over).
+// An expected date (not published yet) says so.
 function experimentStatus(item) {
+  if (item.type === "expected") return "Expected";
   return itemEndDate(item) < todayText() ? "Passed" : "Upcoming";
 }
 
-// One run as tab-separated rows (Excel puts each part in its own column)
+// The form fields of a run, as [name, value] pairs
+function experimentFields(result) {
+  const d = (result.experiment && result.experiment.details) || {};
+  return [
+    ["Admissions cycle", result.experiment.cycle || ""],
+    ["Application deadline", d.deadline ? formatDate(d.deadline) : (d.deadlineMonth ? d.deadlineMonth + " (month only)" : "")],
+    ["City", result.city], ["Country", result.country],
+    ["Entry requirements", d.requirements || ""], ["How to apply", d.applicationInfo || ""],
+    ["Course description", d.courseDescription || ""], ["Important notes", d.notes || ""],
+    ["Rolling admissions", d.rolling ? "yes" : "no"],
+  ];
+}
+
+// Every page the AI tried to read (main search, then the qualification search)
+function experimentPages(run) {
+  const pages = [];
+  if (run.diagnostics) run.diagnostics.pages.forEach(function (p) { pages.push(["Main search", p.url, p.status]); });
+  if (run.qualification && run.qualification.diagnostics) {
+    run.qualification.diagnostics.pages.forEach(function (p) { pages.push(["Qualification search", p.url, p.status]); });
+  }
+  return pages;
+}
+
+// One run as tab-separated rows (a spreadsheet puts each part in its own
+// column): first one row per date, then the form fields, then the pages read
 function experimentRows(result, cachedAt) {
   const run = result.experiment;
   const usage = run.usage || {};
@@ -190,40 +217,72 @@ function experimentRows(result, cachedAt) {
   const dates = result.applicationDates.length ? result.applicationDates : [null];
   const rows = dates.map(function (item) {
     const parts = item
-      ? [DATE_TYPE_LABELS[item.type] || item.type, item.campus, item.label, item.appliesTo || "", item.date, experimentStatus(item), item.sourceUrl]
+      ? [DATE_TYPE_LABELS[item.type] || item.type, item.campus, item.label, item.appliesTo || "",
+        item.endDate ? item.date + " to " + item.endDate : item.date, experimentStatus(item), item.sourceUrl]
       : ["(no dates found)", "", "", "", "", "", ""];
     return [run.version, runAt, result.name, result.course, run.cycle].concat(parts, runParts);
   });
-  return [header].concat(rows).map(function (row) {
+  const table = [header].concat(rows);
+  table.push([], ["Field", "Value"]);
+  experimentFields(result).forEach(function (pair) { table.push(pair); });
+  if (run.qualification && run.qualification.usage) {
+    const q = run.qualification.usage;
+    table.push(["Qualification search cost (USD)", typeof q.cost === "number" ? q.cost.toFixed(4) : ""]);
+  }
+  const pages = experimentPages(run);
+  if (pages.length) {
+    table.push([], ["Search", "Page", "Status"]);
+    pages.forEach(function (row) { table.push(row); });
+  }
+  return table.map(function (row) {
     return row.map(function (part) { return String(part === undefined || part === null ? "" : part).replace(/[\t\n]+/g, " "); }).join("\t");
   }).join("\n");
+}
+
+// A folded section: click its title to open it
+function experimentSection(title, className) {
+  const section = makeElement("details", "small " + className);
+  section.append(makeElement("summary", "", title));
+  return section;
 }
 
 function experimentResult(result, cachedAt) {
   const run = result.experiment;
   const usage = run.usage;
+  const qual = run.qualification;
   const panel = makeElement("div", "experiment-result");
   panel.style.marginTop = "12px";
   panel.append(makeElement("p", "", "Auto-fill experiment: version " + run.version +
     (cachedAt ? " (saved run, the numbers are from when it ran)" : "")));
 
   // What the search used, as reported by the Claude API
+  const number = function (value) { return Number(value || 0).toLocaleString(); };
+  const money = function (value) { return typeof value === "number" ? "$" + value.toFixed(3) : "unknown"; };
   const facts = makeElement("ul", "muted small experiment-usage");
   if (usage) {
-    const number = function (value) { return Number(value || 0).toLocaleString(); };
     [
       "Total runtime: " + (usage.runtimeMs ? (usage.runtimeMs / 1000).toFixed(1) + " s" : "not measured"),
       "Searches performed: " + number(usage.searches),
       "Pages fetched: " + number(usage.fetches),
       "Input tokens: " + number(usage.inputTokens),
       "Output tokens: " + number(usage.outputTokens),
-      // (B, C and D: text saved to the cache, and cached text read again at a much lower price)
+      // (B-E: text saved to the cache, and cached text read again at a much lower price)
       "Cache write tokens: " + number(usage.cacheWriteTokens),
       "Cache read tokens: " + number(usage.cacheReadTokens),
       "Estimated API cost: " + (typeof usage.cost === "number"
         ? "$" + usage.cost.toFixed(3) + " (" + usage.model + ", " + usage.requests + (usage.requests === 1 ? " request)" : " requests)")
         : "unknown (no price for " + usage.model + ")"),
     ].forEach(function (text) { facts.append(makeElement("li", "", text)); });
+    if (qual && qual.usage) {
+      const q = qual.usage;
+      facts.append(makeElement("li", "experiment-qualification", "Qualification search (" + qual.qualification + "): " +
+        money(q.cost) + ", " + number(q.searches) + " searches, " + number(q.fetches) + " pages" +
+        (q.runtimeMs ? ", " + (q.runtimeMs / 1000).toFixed(1) + " s" : "") + (qual.cachedAt ? " (saved)" : "")));
+      if (typeof usage.cost === "number" && typeof q.cost === "number") {
+        facts.append(makeElement("li", "", "Total cost: " + money(usage.cost + (qual.cachedAt ? 0 : q.cost))));
+      }
+    }
+    if (run.qualificationError) facts.append(makeElement("li", "", "Qualification search failed: " + run.qualificationError));
   } else {
     facts.append(makeElement("li", "", "No Claude search ran, so there's nothing to measure."));
   }
@@ -248,18 +307,65 @@ function experimentResult(result, cachedAt) {
   if (result.aiSearched && result.applicationDates.length === 0) list.append(makeElement("li", "", "No dates found."));
   panel.append(list);
 
+  // The form fields (also in Copy for Excel: text in form boxes doesn't copy with the page)
+  if (run.details) {
+    const fields = experimentSection("Form fields", "experiment-fields");
+    experimentFields(result).forEach(function (pair) {
+      const line = makeElement("p", "");
+      line.append(makeElement("strong", "", pair[0] + ": "), pair[1] || "–");
+      fields.append(line);
+    });
+    panel.append(fields);
+  }
+
+  // Which pages the AI read, and which failed (tells us why something was missed)
+  const pages = experimentPages(run);
+  if (run.diagnostics) {
+    const section = experimentSection("Pages read (" + pages.length + ")", "experiment-pages");
+    const pageList = makeElement("ul", "");
+    pages.forEach(function (row) {
+      const item = makeElement("li", "", row[2] + " · " + row[0] + " · ");
+      const link = makeElement("a", "", row[1]);
+      link.href = row[1];
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      item.append(link);
+      pageList.append(item);
+    });
+    if (pages.length === 0) pageList.append(makeElement("li", "", "No pages were opened (only search results were used)."));
+    section.append(pageList);
+    const searches = run.diagnostics.searches.concat(qual && qual.diagnostics ? qual.diagnostics.searches : []);
+    if (searches.length) section.append(makeElement("p", "", "Searches: " + searches.join(" · ")));
+    panel.append(section);
+
+    const answer = experimentSection("The AI's full answer", "experiment-answer");
+    const pre = makeElement("pre", "", run.diagnostics.answer +
+      (qual && qual.diagnostics ? "\n\n--- Qualification search ---\n" + qual.diagnostics.answer : ""));
+    pre.style.whiteSpace = "pre-wrap";
+    answer.append(pre);
+    panel.append(answer);
+  }
+
   const copy = makeElement("button", "button button-small experiment-copy", "Copy for Excel");
   copy.type = "button";
   copy.addEventListener("click", async function () {
     try {
       await navigator.clipboard.writeText(experimentRows(result, cachedAt));
-      showToast("Copied. Paste it into the Excel sheet.", "copy");
+      showToast("Copied. Paste it into the scoring sheet.", "copy");
     } catch (error) {
       showToast("Your browser didn't allow copying.", "circle-alert");
     }
   });
   panel.append(copy);
   return panel;
+}
+
+// When only the month of the deadline is published ("June 2027"), say so
+// under the date box, which needs an exact day (we never make one up)
+function showDeadlineMonth(month) {
+  const note = document.getElementById("deadline-month");
+  note.textContent = month ? "Only the month is published: " + month + ". Add the exact day when it's announced." : "";
+  note.hidden = !month;
 }
 
 // ----- The "Find details" button -----
@@ -278,8 +384,10 @@ async function lookUpUniversity(options) {
     return;
   }
 
+  // The experiment's thorough versions (B-E) take longer, so say how long
+  const thorough = SEARCH_SETUPS[AUTOFILL_VERSION] && SEARCH_SETUPS[AUTOFILL_VERSION].thorough;
   const steps = hasAiSearch()
-    ? ["Finding the university", "Searching the official website", "Filling in the form"]
+    ? ["Finding the university", thorough ? "Searching official pages (this can take up to 2 minutes)" : "Searching the official website", "Filling in the form"]
     : ["Finding the university", "Filling in the form"];
 
   submitButton.disabled = true;
@@ -296,11 +404,14 @@ async function lookUpUniversity(options) {
 
   // Fill in the form
   foundSection.hidden = false;
+  if (result.name !== name) document.getElementById("name").value = result.name;   // the official name
   setAutoField("city", result.city, true);
   setAutoField("country", result.country, true);
   AUTO_FIELDS.slice(2).forEach(function (key) {
     setAutoField(key, details ? details[key] : "", result.aiSearched);
   });
+
+  showDeadlineMonth(details && !details.deadline ? details.deadlineMonth : "");
 
   lookup = result;
   showLookupResult(result, answer.errorText, answer.cachedAt);
@@ -418,6 +529,7 @@ function stopEditing() {
   editingId = null;
   lookup = null;
   form.reset();
+  showDeadlineMonth("");
   clearAllErrors();
   clearAutoFieldMarks();
 

@@ -32,12 +32,23 @@ function daysUntil(dateText) {
 }
 
 // Show a date in a friendly way, e.g. "15 Jan 2027"
+// Always "6 Nov 2026": the month as a word, so nobody reads 06/11 as 11 June
 function formatDate(dateText) {
-  return parseDate(dateText).toLocaleDateString(undefined, {
+  return parseDate(dateText).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
+}
+
+// "12-16 Oct 2026", "20 Jul - 28 Sep 2026" or "28 Dec 2026 - 3 Jan 2027"
+function formatDateRange(startText, endText) {
+  const start = parseDate(startText);
+  const end = parseDate(endText);
+  if (start.getFullYear() !== end.getFullYear()) return formatDate(startText) + " \u2013 " + formatDate(endText);
+  const month = function (d) { return d.toLocaleDateString("en-GB", { month: "short" }); };
+  if (start.getMonth() === end.getMonth()) return start.getDate() + "\u2013" + formatDate(endText);
+  return start.getDate() + " " + month(start) + " \u2013 " + formatDate(endText);
 }
 
 function getDeadlineStatus(dateText) {

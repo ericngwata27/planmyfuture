@@ -657,11 +657,30 @@ const ANSWERS_B = [
 
 // Answer Claude's requests and keep what the site sent. Version B's
 // requests get the B answers, everything else gets ANSWER_A.
+// The qualification search's answer (versions B-E, when the profile has a school system)
+const ANSWER_QUALIFICATION = { stop_reason: "end_turn", model: "claude-opus-5-5",
+  usage: { input_tokens: 10, output_tokens: 100, cache_creation_input_tokens: 500, cache_read_input_tokens: 1000,
+    server_tool_use: { web_search_requests: 1, web_fetch_requests: 1 } },
+  content: [{ type: "text", text: [
+    "Qualification Requirements: Abitur with an overall grade of 2.0 or better, and Maths in the final exams.",
+    "Qualification Dates:",
+    "documents | - | Final Abitur certificate due | 31 July 2027 | other: Abitur applicants | https://escp.eu/abitur",
+  ].join("\n") }] };
+
+// Answer Claude's requests and keep what the site sent. The main requests
+// of versions B-E get the B answers, everything else gets ANSWER_A.
+// Qualification searches are kept apart in sent.qualification.
 async function recordClaude(page) {
   const sent = [];
+  sent.qualification = [];
   let bReplies = 0;
   await page.route(/api\.anthropic\.com/, (route) => {
     const body = JSON.parse(route.request().postData());
+    const system = Array.isArray(body.system) ? body.system[0].text : body.system;
+    if (system.includes("one specific school qualification")) {
+      sent.qualification.push(body);
+      return route.fulfill({ json: ANSWER_QUALIFICATION });
+    }
     sent.push(body);
     const isB = body.tools.some((tool) => tool.name === "web_fetch");
     return route.fulfill({ json: isB ? ANSWERS_B[Math.min(bReplies++, ANSWERS_B.length - 1)] : ANSWER_A });
@@ -749,7 +768,10 @@ test("?autofill=B searches thoroughly for every student, labels every date and s
     expect(tool.allowed_domains).toEqual(expect.arrayContaining(["escp.eu", "ucas.com", "cao.ie", "collegeboard.org", "esat-tmua.ac.uk"]));
   }
   const instructions = request.system[0].text;
-  expect(instructions).toContain("Never infer a date. Never estimate a deadline. Never derive deadlines from prior years.");
+  expect(instructions).toContain("Never infer a date. Never estimate a deadline.");
+  expect(instructions).toContain("Never present a date from a previous year as this year's date.");
+  expect(instructions).toContain("Reading plan:");
+  expect(instructions).toContain("write the whole range");
   expect(instructions).toContain("Do not stop once you have found the application deadline.");
   expect(instructions).not.toContain("3000 characters");
   const question = request.messages[0].content;
@@ -783,9 +805,9 @@ test("?autofill=B searches thoroughly for every student, labels every date and s
 
   // Every date, with who it's for, and passed ones labelled
   const dates = page.locator(".experiment-dates li");
-  await expect(dates).toHaveCount(5);
+  await expect(dates).toHaveCount(6);                          // 5 from the main search + 1 from the qualification search
   await expect(dates.filter({ hasText: "TARA registration deadline" })).toContainText("Status: Passed");
-  await expect(dates.filter({ hasText: "Final deadline" })).toContainText("international applicants");
+  await expect(dates.filter({ hasText: "Final deadline" })).toContainText("international");   // "international applicants" -> the fixed label
   await expect(dates.filter({ hasText: "Final deadline" })).toContainText("Status: Upcoming");
   await expect(page.locator(".experiment-cycle")).toHaveText("Using 2027/28 admissions cycle (September 2027 entry).");
   await expect(page.locator("#notes")).toHaveValue(/^Using 2027\/28 admissions cycle/);
@@ -793,7 +815,7 @@ test("?autofill=B searches thoroughly for every student, labels every date and s
 
   // The rows copied for the Excel sheet
   const rows = (await page.evaluate(() => experimentRows(lookup, null))).split("\n").map((row) => row.split("\t"));
-  expect(rows).toHaveLength(6);
+  expect(rows.length).toBeGreaterThan(6);        // the dates, then the form fields and pages read
   expect(rows[0].slice(0, 12)).toEqual(["Version", "Run at", "University", "Course", "Admissions cycle", "Type", "Campus", "Name", "Applies to", "Date", "Status", "Source"]);
   expect(rows[2]).toEqual(expect.arrayContaining(["B", "Test", "TARA registration deadline", "2026-09-28", "Passed", "5", "3", "3000", "700", "1000", "10000", "0.0830"]));
 
@@ -802,7 +824,7 @@ test("?autofill=B searches thoroughly for every student, labels every date and s
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("future-planner-universities")));
   expect(saved[0].applicationDates).toEqual(expect.arrayContaining([
     expect.objectContaining({ type: "test", label: "TARA registration deadline", date: "2026-09-28" }),
-    expect.objectContaining({ type: "deadline", label: "Final deadline", appliesTo: "international applicants" }),
+    expect.objectContaining({ type: "deadline", label: "Final deadline", appliesTo: "international" }),
     expect.objectContaining({ type: "enrolment", label: "Deposit deadline" }),
   ]));
   expect(saved[0].applicationDates.find((d) => d.label === "Round 1")).not.toHaveProperty("appliesTo");
@@ -869,5 +891,152 @@ test("adding a university and course you already have updates it instead of addi
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("future-planner-universities")));
   expect(saved).toHaveLength(1);
   expect(saved[0]).toMatchObject({ name: "ESCP", course: "Bachelor in Management", deadline: "2026-11-18" });
+  expect(page.errors).toEqual([]);
+});
+
+test("date ranges stay ranges, dates read '6 Nov 2026', month-only deadlines and official names are shown", async ({ page }) => {
+  await fakeWikidata(page);
+  await page.route(/api\.anthropic\.com/, (route) => route.fulfill({ json: { stop_reason: "end_turn",
+    content: [{ type: "text", text: [
+      "City: Paris (economics tracks are also taught in Madrid)",
+      "Country: France",
+      "Application Deadline: June 2027",                          // like ESADE: only the month, no dated deadline
+      "Rolling Admissions: no",
+    ].join("\n") }] } }));
+  await openWith(page, { apiKey: "sk-ant-test" });
+
+  // Ranges, and "Round 1 - 18 November" is not a range
+  const checks = await page.evaluate(() => {
+    const range = parseApplicationDates("test | - | TARA test window | 12-16 October 2026 | all | https://example.org", { appliesTo: true })[0];
+    const round = parseApplicationDates("Paris: Round 1 - 18 November 2026")[0];
+    return {
+      range: [range.date, range.endDate, itemText(range), isPastItem(range)],
+      round: [round.date, round.endDate || "", round.campus],
+      across: formatDateRange("2026-07-20", "2026-09-28"),
+      day: formatDate("2026-11-06"),
+    };
+  });
+  expect(checks.range).toEqual(["2026-10-12", "2026-10-16", "TARA test window · 12–16 Oct 2026", false]);
+  expect(checks.round).toEqual(["2026-11-18", "", "Paris"]);
+  expect(checks.across).toBe("20 Jul – 28 Sept 2026");        // (British English writes "Sept")
+  expect(checks.day).toBe("6 Nov 2026");
+
+  // Typed in lower case: the official name; notes left out of the city;
+  // a month-only deadline is shown next to the (empty) date box
+  await page.fill("#name", "escp");
+  await page.fill("#course", "Bachelor in Management");
+  await page.click("#submit-button");
+  await expect(page.locator("#name")).toHaveValue("ESCP Business School");
+  await expect(page.locator("#city")).toHaveValue("Paris");
+  await expect(page.locator("#deadline")).toHaveValue("");
+  await expect(page.locator("#deadline-month")).toBeVisible();
+  await expect(page.locator("#deadline-month")).toContainText("Only the month is published: Jun 2027");
+  expect(page.errors).toEqual([]);
+});
+
+test("?autofill=E is Sonnet with B's full reading", async ({ page }) => {
+  await fakeWikidata(page);
+  const sent = await recordClaude(page);
+  await openWith(page, { apiKey: "sk-ant-test", academicProfile: { intendedStartDate: "2027-09" } }, "/?autofill=B");
+  await findDetails(page);
+  const b = sent[0];
+  await page.goto("/?autofill=E");
+  await findDetails(page);
+  const e = sent[sent.length - 1];
+  expect(e.model).toBe("claude-sonnet-5-5");
+  expect(e).not.toHaveProperty("fallbacks");
+  expect(e.tools).toEqual(b.tools);                                        // the same full reading as B
+  expect(e.tools[1]).toMatchObject({ max_uses: 6, max_content_tokens: 20000 });
+  expect(e.system).toEqual(b.system);
+  expect(sent.qualification).toHaveLength(0);                              // no school system in the profile: no qualification search
+  await expect(page.locator(".experiment-result")).toContainText("Auto-fill experiment: version E");
+  expect(page.errors).toEqual([]);
+});
+
+test("B-E: the qualification search, expected dates, a missing intake and the diagnostics", async ({ page }) => {
+  await fakeWikidata(page);
+  const main = [];
+  const qualification = [];
+  const MAIN = { stop_reason: "end_turn", model: "claude-opus-5-5",
+    usage: { input_tokens: 20, output_tokens: 300, cache_creation_input_tokens: 2000, cache_read_input_tokens: 5000,
+      server_tool_use: { web_search_requests: 2, web_fetch_requests: 2 } },
+    content: [
+      { type: "server_tool_use", id: "s1", name: "web_search", input: { query: "ESCP bachelor in management deadlines" } },
+      { type: "server_tool_use", id: "f1", name: "web_fetch", input: { url: "https://escp.eu/dates" } },
+      { type: "web_fetch_tool_result", tool_use_id: "f1", content: { type: "web_fetch_result", url: "https://escp.eu/dates" } },
+      { type: "server_tool_use", id: "f2", name: "web_fetch", input: { url: "https://escp.eu/closed" } },
+      { type: "web_fetch_tool_result", tool_use_id: "f2", content: { type: "web_fetch_tool_error", error_code: "url_not_accessible" } },
+      { type: "text", text: [
+        "City: Paris",
+        "Country: France",
+        "Admissions Cycle: Requested intake not available. Nearest available intakes: January 2027 (deadline 1 November 2026), September 2028 (deadline not published yet).",
+        "Application Deadline: 18 November 2026",
+        "Entry Requirements: A secondary school diploma.",
+        "How to Apply: 1. Apply on the ESCP portal.",
+        "Application Dates:",
+        "deadline | Paris | Round 1 | 18 November 2026 | international applicants | https://escp.eu/dates",
+        "test | - | Online test window | 1-5 December 2026 | all | https://escp.eu/test",
+        "expected | - | Expected results date (based on last year) | 15 June 2027 | all | https://escp.eu/results",
+        "Rolling Admissions: no",
+      ].join("\n") },
+    ] };
+  await page.route(/api\.anthropic\.com/, (route) => {
+    const body = JSON.parse(route.request().postData());
+    const system = Array.isArray(body.system) ? body.system[0].text : body.system;
+    if (system.includes("one specific school qualification")) {
+      qualification.push(body);
+      return route.fulfill({ json: ANSWER_QUALIFICATION });
+    }
+    main.push(body);
+    return route.fulfill({ json: MAIN });
+  });
+  await openWith(page, { apiKey: "sk-ant-test", academicProfile: PROFILE }, "/?autofill=B");
+  await findDetails(page);
+
+  // The qualification search: its own smaller request, with the school system
+  expect(main).toHaveLength(1);
+  expect(qualification).toHaveLength(1);
+  expect(qualification[0].messages[0].content).toContain("Qualification: Abitur");
+  expect(qualification[0].tools[0]).toMatchObject({ type: "web_search_20260209", max_uses: 4 });
+  expect(qualification[0].tools[1]).toMatchObject({ type: "web_fetch_20260209", max_uses: 3, max_content_tokens: 12000 });
+  expect(main[0].messages[0].content).not.toContain("Abitur");             // the main search stays the same for everyone
+  await expect(page.locator("#requirements")).toHaveValue(/^For Abitur: Abitur with an overall grade of 2\.0/);
+  await expect(page.locator(".experiment-qualification")).toContainText("Qualification search (Abitur)");
+
+  // Dates: a range, an expected date (month only, never a deadline), the qualification's date, labels normalised
+  const dates = page.locator(".experiment-dates li");
+  await expect(dates.filter({ hasText: "Online test window" })).toContainText("1–5 Dec 2026");
+  await expect(dates.filter({ hasText: "Expected results date" })).toContainText("Status: Expected");
+  await expect(dates.filter({ hasText: "Expected results date" })).toContainText("Jun 2027 (approx.)");
+  await expect(dates.filter({ hasText: "Final Abitur certificate due" })).toContainText("Abitur applicants");
+  await expect(dates.filter({ hasText: "Round 1" })).toContainText("international");
+
+  // Diagnostics: pages read or failed, the searches, the AI's full answer, the form fields
+  const pages = page.locator(".experiment-pages");
+  await pages.locator("summary").click();
+  await expect(pages).toContainText("read · Main search · https://escp.eu/dates");
+  await expect(pages).toContainText("failed: url_not_accessible · Main search · https://escp.eu/closed");
+  await expect(pages).toContainText("ESCP bachelor in management deadlines");
+  await page.locator(".experiment-answer summary").click();
+  await expect(page.locator(".experiment-answer pre")).toContainText("Admissions Cycle: Requested intake not available");
+  await expect(page.locator(".experiment-answer pre")).toContainText("--- Qualification search ---");
+  await page.locator(".experiment-fields summary").click();
+  await expect(page.locator(".experiment-fields")).toContainText("How to apply: 1. Apply on the ESCP portal.");
+  const rows = await page.evaluate(() => experimentRows(lookup, null));
+  expect(rows).toContain("Entry requirements\tFor Abitur:");
+  expect(rows).toContain("Main search\thttps://escp.eu/closed\tfailed: url_not_accessible");
+
+  // Saved: no intake (it doesn't exist there), the expected date has no day
+  await page.click("#submit-button");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("future-planner-universities")));
+  expect(saved[0].intake).toBe("");
+  expect(saved[0].applicationDates.find((d) => d.type === "expected")).toMatchObject({ date: "2027-06", approximate: true });
+  expect(saved[0].applicationDates.find((d) => d.label === "Online test window")).toMatchObject({ date: "2026-12-01", endDate: "2026-12-05" });
+
+  // The next search for the same programme and qualification reuses the saved qualification search
+  await page.goto("/?autofill=B");
+  await findDetails(page);
+  expect(qualification).toHaveLength(1);
+  await expect(page.locator(".experiment-qualification")).toContainText("(saved)");
   expect(page.errors).toEqual([]);
 });

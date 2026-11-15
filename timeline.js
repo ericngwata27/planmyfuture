@@ -52,6 +52,7 @@ const DATE_TYPE_LABELS = {
   interview: "Interview",
   documents: "Documents",
   enrolment: "Enrolment",
+  expected: "Expected (not yet published)",
 };
 
 
