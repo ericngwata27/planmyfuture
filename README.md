@@ -29,14 +29,17 @@ Opening `index.html` directly also works, but some features (like the sharper 8K
 
 Without a key, auto-fill uses Wikidata and Wikipedia (city, country, website, map position). With a Claude API key (**Auto-fill settings** under the form), it also reads the university's official website for dates and requirements. The key is stored only in your browser and sent only to Anthropic. A backend will take this over later.
 
-**The auto-fill experiment.** Add `?autofill=A`, `B`, `C` or `D` to the address to compare versions of the search (without it, nothing changes):
+**The auto-fill experiment.** Add `?autofill=A`, `B`, `C`, `D` or `E` to the address to compare versions of the search (without it, nothing changes):
 
 - **A**: today's search.
 - **B**: the thorough search. It runs more searches, reads whole pages (web fetch), follows a checklist (tests, interviews, documents, enrolment) and labels who each date applies to. It only uses official university, admissions and testing sites. It sends no profile, only the intake, so one search could be shared by every student. Caching makes text it reads again much cheaper.
 - **C**: B, reading less (6 searches, 4 pages, about 12,000 tokens a page). Does that lose dates?
 - **D**: C on the cheaper Sonnet model. Does that lose dates?
+- **E**: B on Sonnet: the full reading with the cheaper model.
 
-Each step changes one thing, so if quality drops we know why. Under the result, every version shows the run time, searches, pages, tokens (including cache) and the cost, plus every date found (passed ones labelled), with a **Copy for Excel** button. Each version has its own saved searches. Use **Search again** for a second run.
+B to E follow a reading plan (course page, central system, test provider), look for dates after applying (tests, interviews, results, documents), write windows of days as ranges, mark dates that aren't published yet as "Expected (based on last year)", and say when the requested intake doesn't exist. If your profile has a school system, a second small search looks for that qualification's requirements and required tests; it's saved per programme and qualification, so it's shared.
+
+Under the result, every version shows the run time, searches, pages, tokens (including cache) and the cost, every date found (passed ones labelled), the form fields, the pages the AI read or failed to read, and its full answer, with a **Copy for Excel** button. Each version has its own saved searches. Use **Search again** for a second run.
 
 ## Tests
 

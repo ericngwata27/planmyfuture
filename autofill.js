@@ -202,7 +202,7 @@ const SEARCH_INSTRUCTIONS = [
 ].join("\n");
 
 // ----- The A/B experiment -----
-// Only runs when the address ends in ?autofill=A, B, C or D. Without it
+// Only runs when the address ends in ?autofill=A, B, C, D or E. Without it
 // the site works exactly as above (normal visitors never see this).
 //   A = today's search (the instructions above), with its own saved searches
 //       and the cost/time shown under the result
@@ -212,11 +212,12 @@ const SEARCH_INSTRUCTIONS = [
 //       the shared search on the server will work, and it uses caching
 //   C = B, but reading less (fewer searches and pages): does that lose dates?
 //   D = C on the cheaper Sonnet model: does that lose dates?
+//   E = B on Sonnet (full reading, cheaper model)
 // Each step changes one thing, so if quality drops we know why.
 // The results are scored by hand against the screenshots and the Excel sheet.
 function readAutofillVersion() {
   const value = (new URLSearchParams(window.location.search).get("autofill") || "").toUpperCase();
-  return ["A", "B", "C", "D"].indexOf(value) !== -1 ? value : "";
+  return ["A", "B", "C", "D", "E"].indexOf(value) !== -1 ? value : "";
 }
 const AUTOFILL_VERSION = readAutofillVersion();   // "" = the normal site
 
@@ -266,25 +267,29 @@ const SEARCH_INSTRUCTIONS_B = [
   "",
   "How to work:",
   "- Search, then open the most relevant official pages with web fetch to read them in full: long pages, date tables and expandable or \"show more\" sections. Search results alone often miss dates.",
+  "- Reading plan: open at least one page from each of these that applies: (1) the course's own page, (2) the central application system's page for this course, if the course uses one (for example UCAS, CAO, OUAC), (3) the official test provider's page, if a test is required.",
+  "- Dates after applying are often on separate pages: look for course-specific timetables (interview timetables, test calendars, decision dates) and open them.",
   "- Do not stop once you have found the application deadline. Go through the whole checklist below.",
-  "- This search is shared by every student, so cover every route, campus and applicant group. Plan searches such as \"[University] [course] application deadlines\", \"[University] international applicants\", \"[University] [course] admissions test\" and \"[University] [course] entry requirements\".",
+  "- This search is shared by every student, so cover every route, campus and applicant group. Plan searches such as \"[University] [course] application deadlines\", \"[University] [course] interview timetable\", \"[University] [course] admissions test\" and \"[University] [course] entry requirements\".",
   "",
   "Checklist (look for each one):",
-  "- Application: opening date, application deadline, programme-specific deadlines, intake-specific deadlines, every round (early, priority, final), differences for domestic and international (or EU and non-EU) applicants, decision or result dates, course start.",
-  "- Tests: whether a test is required (SAT, ACT, IELTS, TOEFL, GRE, GMAT, TARA or a programme-specific test), and its registration deadlines and test dates.",
-  "- Documents: transcript, recommendation, portfolio and upload deadlines.",
+  "- Application: when the application form opens and when submissions open (these can differ, for example the form opens in May but you can submit from September), every deadline (each round, early, priority, final, programme-specific, intake-specific), differences for domestic and international (or EU and non-EU) applicants, cheaper or earlier options (for example a discounted early fee), decision or result dates, offer rounds, course start.",
+  "- Tests: whether a test is required (SAT, ACT, IELTS, TOEFL, GRE, GMAT, TARA or a programme-specific test). If one is required, list its registration or booking deadlines and its test dates as their own test dates, because booking the test is a step the student must take.",
+  "- Documents: transcript, recommendation, portfolio, upload and final-diploma deadlines.",
   "- Interview: interview invitations, interview dates and deadlines, assessment centres.",
   "- Enrolment: offer acceptance, deposit, registration and enrolment confirmation deadlines.",
   "",
   "Never invent dates (most important rule):",
-  "- Never infer a date. Never estimate a deadline. Never derive deadlines from prior years.",
-  "- Never generate dates that were not found on official sources.",
+  "- Never infer a date. Never estimate a deadline. Never generate dates that were not found on official sources.",
+  "- Never present a date from a previous year as this year's date. The only exception is an expected date (see Application Dates), which must be clearly marked.",
   "- If a date cannot be verified on an official source, leave it out: it is missing. Missing information is preferable to invented information.",
-  "- Never invent a day. If a page only gives a month, write just the month and year (for example: June 2027).",
+  "- Give the exact day whenever any official page gives it. Write only the month and year (for example: June 2027) when no official page gives the day. Never invent a day.",
+  "- When something runs over several days (a test window, interview days, a booking window), write the whole range, for example 12-16 October 2026 or 20 July - 28 September 2026, not just one day.",
+  "- If official pages give different dates for the same thing, list the earlier (safer) one and write the other in Important Notes, for example: \"The fees page also says 2 February; use 1 February to be safe.\"",
   "",
   "Admissions cycle:",
   "- Give dates for the requested intake's admissions cycle only. Include deadlines in that cycle that have already passed; never leave them out.",
-  "- If the requested intake does not exist for this course, do not silently use another one. Write in Admissions Cycle: \"Requested intake not available. Nearest available intakes: <intake>, <intake>\", and give the dates for those intakes with the intake in each date's name.",
+  "- If the requested intake does not exist for this course, do not silently use another one. Write in Admissions Cycle: \"Requested intake not available.\", then the nearest available intakes before and after the requested one, each with its application deadline if published (or \"deadline not published yet\"). Give the dates for those intakes with the intake in each date's name.",
   "- If no intake is given, use the next intake that is open for applications (or opens next), and write in Admissions Cycle which one, for example: \"Using 2027/28 admissions cycle (September 2027 entry)\".",
   "",
   "Applicant routes:",
@@ -310,24 +315,28 @@ const SEARCH_INSTRUCTIONS_B = [
   "Rules:",
   "- No commentary, disclaimers or notes about your search. Do not recommend when to apply.",
   "- If information is missing, write \"Not available\".",
-  "- Admissions Cycle: the cycle you gave dates for (see above), in one sentence.",
-  "- Application Deadline: the next application deadline that hasn't passed yet, with day, month and year (for example 14 January 2027).",
+  "- City and Country: place names only, no notes.",
+  "- Admissions Cycle: the cycle you gave dates for (see above).",
+  "- Application Deadline: the next application deadline that hasn't passed yet, with day, month and year (for example 14 January 2027), or just the month if no day is published.",
   "- Entry Requirements: the general requirements, plus the requirements for each qualification where the pages list them (for example IB, A-levels, Abitur), including required tests and English scores. Up to 5 sentences.",
-  "- How to Apply: the application route and portal, in up to 3 sentences.",
+  "- How to Apply: every step in order, including the central application system if there is one (for example: 1. register on OUAC, 2. complete the university's portal). Up to 4 sentences.",
   "- Application Dates: list EVERY date from the checklist, in date order, one per line. " +
     "Write each one as: type | campus | name | date | applies to | page URL. " +
-    "type is one of: opens, deadline, decision, start, test, interview, documents, enrolment, other. " +
-    "campus is the campus name, or - if the date is the same for every campus. " +
-    "name is short (at most 6 words), for example: Round 1, Final deadline, TARA registration deadline, Deposit deadline. " +
+    "type is one of: opens, deadline, decision, start, test, interview, documents, enrolment, expected, other. " +
+    "campus: name every campus the date applies to, exactly as the page groups them (for example Berlin/London/Madrid/Paris), or - if the page says it is the same for every campus. " +
+    "name is short (at most 6 words), for example: Round 1, TARA booking deadline, Deposit deadline. Call a deadline final only if the page calls it final, and put conditions that matter in the name, for example: Early Decision (binding). " +
+    "date is one day, a month, or a range of days (see above). " +
     "applies to is who the date is for, using only these labels (join two with +, for example: international + UCAS route): " +
     "all, domestic, international, EU/EEA, non-EU/EEA, UCAS route, Common App route, Parcoursup route, direct route. " +
     "If none of them fits, write other: and up to 4 words. " +
-    "page URL is the official page where you found the date.",
+    "page URL is the official page where you found the date. " +
+    "expected: only when this cycle's date is not published yet but an official page shows last cycle's date. Write the name as \"Expected <name> (based on last year)\" and the date as the month and year of this cycle only. An expected date is never a deadline.",
   "  Example:",
   "  opens | - | Applications open | 1 September 2026 | all | https://www.example.edu/apply",
   "  deadline | Paris | Round 1 | 18 November 2026 | all | https://www.example.edu/dates",
   "  deadline | - | Final deadline | 15 January 2027 | international | https://www.example.edu/international",
-  "  test | - | Admissions test registration deadline | 1 October 2026 | all | https://www.example.org/test-dates",
+  "  test | - | Admissions test window | 12-16 October 2026 | all | https://www.example.org/test-dates",
+  "  expected | - | Expected results date (based on last year) | June 2027 | all | https://www.example.edu/results",
   "  (These example dates are made up: never copy them.)",
   "- Rolling Admissions: write yes only if an official page says applications are assessed on a rolling basis or places are filled as applications arrive. Fixed rounds with deadlines are not rolling: write no.",
   "- Use plain text only - no markdown.",
@@ -356,6 +365,9 @@ SEARCH_SETUPS.C = Object.assign({}, SEARCH_SETUPS.B, { searches: 6, fetches: 4, 
 // D: C on the cheaper Sonnet model. (Without "fallbacks": that backup
 // setting isn't confirmed for Sonnet, and a rejected request would waste a run.)
 SEARCH_SETUPS.D = Object.assign({}, SEARCH_SETUPS.C, { model: "claude-sonnet-5-5", fallbacks: false });
+// E: Sonnet with B's full reading. Saves money through the model, not by
+// reading less (reading less lost whole routes at ESCP).
+SEARCH_SETUPS.E = Object.assign({}, SEARCH_SETUPS.B, { model: "claude-sonnet-5-5", fallbacks: false });
 
 // Prices in US dollars, to show what a search cost (from Anthropic's price list).
 // Tokens are priced per million; each web search costs $10 per 1,000.
@@ -383,7 +395,9 @@ const SECTION_KEYS = {
   "course": "course",
   "city": "city",
   "country": "country",
-  "admissions cycle": "cycle",          // version B only
+  "admissions cycle": "cycle",          // versions B-E only
+  "qualification requirements": "qualRequirements",   // the qualification search (B-E)
+  "qualification dates": "qualDates",
   "application deadline": "deadline",
   "entry requirements": "requirements",
   "how to apply": "applicationInfo",
@@ -429,6 +443,13 @@ function parseSections(text) {
     }
   });
   return result;
+}
+
+// A city or country: the place names only. Notes in brackets or after a
+// semicolon are left out ("Paris (economics tracks are also...)" -> "Paris").
+function cleanPlace(value) {
+  const text = cleanAnswer(value);
+  return text.split(/\s*[(;]/)[0].replace(/[\s,.]+$/, "").slice(0, 80);
 }
 
 // Tidy up one answer: must be text, not "Not available", not too long
@@ -590,7 +611,7 @@ const DATE_TYPES = ["opens", "deadline", "decision", "start", "other"];
 
 // Extra types that only auto-fill version B asks for (the experiment).
 // They're kept when saved, but aren't offered in the "Add date" form.
-const EXTRA_DATE_TYPES = ["test", "interview", "documents", "enrolment"];
+const EXTRA_DATE_TYPES = ["test", "interview", "documents", "enrolment", "expected"];
 
 // "Deadline", "Round 1 closes", "Results" -> one of DATE_TYPES
 function dateType(text) {
@@ -610,8 +631,48 @@ function parseMonthOnly(text) {
   return end ? end.slice(0, 7) : "";
 }
 
-// Read one date. Returns { date, approximate } or null.
+// A window of days, e.g. "12-16 October 2026", "20 July - 28 September 2026",
+// "December 7-9, 2026" or "12 Oct 2026 to 16 Oct 2026".
+// Returns { date, endDate } ("YYYY-MM-DD") or null if the text isn't a range.
+function parseDateRange(text) {
+  const pad = function (n) { return String(n).padStart(2, "0"); };
+  const make = function (year, month, day) { return year + "-" + pad(month) + "-" + pad(day); };
+  const DASH = "\\s*(?:[-\u2013\u2014]|to|until|till)\\s*";
+  let m;
+  // The first number must not belong to a word before it ("Round 1 - 18 November" is not a range)
+  const belongsToWord = function (match) { return /[A-Za-z0-9]\s?$/.test(text.slice(0, match.index)); };
+  // 12-16 October 2026
+  m = text.match(new RegExp("(\\d{1,2})(?:st|nd|rd|th)?" + DASH + "(\\d{1,2})(?:st|nd|rd|th)?\\s+([A-Za-z]{3,})\\.?,?\\s+(\\d{4})", "i"));
+  if (m && monthFromWord(m[3]) && !belongsToWord(m)) {
+    const month = monthFromWord(m[3]);
+    if (Number(m[1]) < Number(m[2])) return { date: make(m[4], month, m[1]), endDate: make(m[4], month, m[2]) };
+  }
+  // 20 July - 28 September 2026
+  m = text.match(new RegExp("(\\d{1,2})(?:st|nd|rd|th)?\\s+([A-Za-z]{3,})\\.?" + DASH + "(\\d{1,2})(?:st|nd|rd|th)?\\s+([A-Za-z]{3,})\\.?,?\\s+(\\d{4})", "i"));
+  if (m && monthFromWord(m[2]) && monthFromWord(m[4]) && !belongsToWord(m)) {
+    const start = make(m[5], monthFromWord(m[2]), m[1]);
+    const end = make(m[5], monthFromWord(m[4]), m[3]);
+    if (start < end) return { date: start, endDate: end };
+  }
+  // December 7-9, 2026
+  m = text.match(new RegExp("([A-Za-z]{3,})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?" + DASH + "(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})", "i"));
+  if (m && monthFromWord(m[1]) && Number(m[2]) < Number(m[3])) {
+    return { date: make(m[4], monthFromWord(m[1]), m[2]), endDate: make(m[4], monthFromWord(m[1]), m[3]) };
+  }
+  // Two full dates: "12 Oct 2026 to 16 Oct 2026", "2026-12-07 to 2026-12-09"
+  const parts = text.split(new RegExp(DASH.replace("[-", "[")));
+  if (parts.length === 2) {
+    const start = parseDeadline(parts[0]);
+    const end = parseDeadline(parts[1]);
+    if (start && end && start < end) return { date: start, endDate: end };
+  }
+  return null;
+}
+
+// Read one date. Returns { date, approximate, endDate? } or null.
 function readItemDate(text) {
+  const range = parseDateRange(text);
+  if (range) return { date: range.date, endDate: range.endDate, approximate: false };
   const exact = parseDeadline(text) || parseLooseDate(text);
   if (exact) return { date: exact, approximate: false };
   const month = parseMonthOnly(text);
@@ -621,6 +682,7 @@ function readItemDate(text) {
 // The last day a date could be: "2027-06" -> "2027-06-30", "2026-11-18" stays.
 // Used to sort dates and to tell whether one has passed.
 function itemEndDate(item) {
+  if (item.endDate) return item.endDate;                 // a window of days ends on its last day
   if (!/^\d{4}-\d{2}$/.test(item.date)) return item.date;
   const parts = item.date.split("-");
   return item.date + "-" + String(new Date(Number(parts[0]), Number(parts[1]), 0).getDate()).padStart(2, "0");
@@ -628,10 +690,11 @@ function itemEndDate(item) {
 
 // "Paris · Round 1 · 18 Nov 2026" (or "Jun 2027 (approx.)" for a month)
 function itemDateText(item) {
+  if (item.endDate) return formatDateRange(item.date, item.endDate);
   if (item.approximate) {
     const parts = item.date.split("-");
     return new Date(Number(parts[0]), Number(parts[1]) - 1, 1)
-      .toLocaleDateString(undefined, { month: "short", year: "numeric" }) + " (approx.)";
+      .toLocaleDateString("en-GB", { month: "short", year: "numeric" }) + " (approx.)";
   }
   return formatDate(item.date);
 }
@@ -648,6 +711,8 @@ function cleanDateItem(raw) {
   const exact = /^\d{4}-\d{2}-\d{2}$/.test(date);
   if (!exact && !/^\d{4}-\d{2}$/.test(date)) return null;
   const text = function (value, max) { return typeof value === "string" ? value.trim().slice(0, max) : ""; };
+  // An expected date (not published yet, based on last year) never gets a day
+  if (dateType(raw.type) === "expected" && exact) return cleanDateItem(Object.assign({}, raw, { date: date.slice(0, 7), endDate: "" }));
   const item = {
     label: text(raw.label, 60) || "Date",
     campus: text(raw.campus, 40),
@@ -656,10 +721,37 @@ function cleanDateItem(raw) {
     sourceUrl: safeUrl(raw.sourceUrl) || "",
     approximate: !exact,
   };
-  // Who the date is for, e.g. "international applicants" (only version B finds this)
+  // Who the date is for, e.g. "international" (only the experiment versions find this)
   const appliesTo = text(raw.appliesTo, 60);
   if (appliesTo) item.appliesTo = appliesTo;
+  // The last day of a window of days, e.g. a test that runs 12-16 October
+  if (exact && /^\d{4}-\d{2}-\d{2}$/.test(raw.endDate || "") && raw.endDate > date) item.endDate = raw.endDate;
   return item;
+}
+
+// "international applicants", "Non-EU students + UCAS" -> the fixed labels
+// ("international", "non-EU/EEA + UCAS route"), so the app can filter on
+// them later. "all" (or nothing) -> "". Anything else -> "other: ...".
+function normaliseAppliesTo(text) {
+  const value = String(text || "").trim();
+  if (/^(-|all|everyone|all applicants|any|none|n\/a|)$/i.test(value)) return "";
+  const labels = [];
+  value.split(/\s*(?:\+|,|\band\b|&)\s*/i).forEach(function (part) {
+    const p = part.toLowerCase().replace(/^other:\s*/, "").trim();
+    if (!p || /^(all|everyone|all applicants)$/.test(p)) return;
+    let label;
+    if (/non[- ]?eu|non[- ]?eea|outside (the )?(eu|eea)/.test(p)) label = "non-EU/EEA";
+    else if (/\beu\b|\beea\b|european union/.test(p)) label = "EU/EEA";
+    else if (/international|overseas|foreign/.test(p)) label = "international";
+    else if (/domestic|\bhome\b|\blocal\b/.test(p)) label = "domestic";
+    else if (/ucas/.test(p)) label = "UCAS route";
+    else if (/common ?app/.test(p)) label = "Common App route";
+    else if (/parcoursup/.test(p)) label = "Parcoursup route";
+    else if (/direct/.test(p)) label = "direct route";
+    else label = "other: " + part.replace(/^other:\s*/i, "").trim().slice(0, 40);
+    if (labels.indexOf(label) === -1) labels.push(label);
+  });
+  return labels.join(" + ");
 }
 
 // Claude's answer, e.g.
@@ -686,10 +778,10 @@ function parseApplicationDates(text, options) {
       const found = readItemDate(fields[3]);
       if (!found) return;
       const campus = fields[1] === "-" || /^(all|any|none|n\/a)$/i.test(fields[1]) ? "" : fields[1];
-      raw = { type: dateType(fields[0]), campus: campus, label: fields[2], date: found.date, sourceUrl: fields[4] || "" };
+      raw = { type: dateType(fields[0]), campus: campus, label: fields[2], date: found.date, endDate: found.endDate, sourceUrl: fields[4] || "" };
       if (withAppliesTo && fields.length >= 6) {
         // type | campus | name | date | applies to | URL
-        raw.appliesTo = /^(-|all|everyone|all applicants|any|none|n\/a)$/i.test(fields[4]) ? "" : fields[4];
+        raw.appliesTo = normaliseAppliesTo(fields[4]);
         raw.sourceUrl = fields[5];
       }
     } else {
@@ -699,7 +791,7 @@ function parseApplicationDates(text, options) {
       const split = splitCampus(part);
       const label = roundLabel(split.rest.replace(/https?:\/\/\S+/g, ""));
       const url = (part.match(/https?:\/\/\S+/) || [""])[0];
-      raw = { type: dateType(label), campus: split.campus, label: label, date: found.date, sourceUrl: url };
+      raw = { type: dateType(label), campus: split.campus, label: label, date: found.date, endDate: found.endDate, sourceUrl: url };
     }
 
     const item = cleanDateItem(raw);
@@ -715,8 +807,10 @@ function parseApplicationDates(text, options) {
 
 // Earliest first
 function sortDateItems(items) {
+  // A window of days sorts by its first day; everything else by its last possible day
+  const sortDate = function (item) { return item.endDate ? item.date : itemEndDate(item); };
   return items.slice().sort(function (a, b) {
-    const x = itemEndDate(a), y = itemEndDate(b);
+    const x = sortDate(a), y = sortDate(b);
     return x < y ? -1 : x > y ? 1 : 0;
   });
 }
@@ -877,41 +971,18 @@ function searchRequestBody(setup, tools, messages) {
   return body;
 }
 
-// version: "" (the normal site), or "A" to "D" (the experiment, see above)
-async function searchOfficialPages(apiKey, uniName, course, found, version) {
-  const setup = SEARCH_SETUPS[version] || SEARCH_SETUPS.A;   // the normal site uses A's setup
-  const isB = Boolean(setup.thorough);   // B, C and D
-  const domain = found && found.website ? getDomain(found.website) : "";
-  const today = new Date().toISOString().slice(0, 10);
-  const profile = getAcademicProfile();
-
-  const question = isB ? questionForB(uniName, course, domain ? found.website : "", today, profile) : [
-    "University: " + uniName,
-    "Course: " + course,
-    domain ? "Official website: " + found.website : "",
-    "Today's date: " + today,
-    // Your academic profile, so the cycle, grades and rules match you
-    profile.intendedStartDate ? "Intended start date: " + intakeLabel(profile.intendedStartDate) : "",
-    profile.currentGradeLevel ? "Current grade level: " + profile.currentGradeLevel : "",
-    profile.schoolSystem ? "School system: " + profile.schoolSystem : "",
-    profile.countryOfResidence ? "Country of residence: " + profile.countryOfResidence : "",
-  ].filter(Boolean).join("\n");
-
-  // The web search tool. max_uses: 3 matches the "stop after 3 pages" rule,
-  // and allowed_domains limits it to the official website when we know it.
-  const webSearch = { type: "web_search_20260209", name: "web_search", max_uses: 3 };
-  if (domain) webSearch.allowed_domains = [domain];
-  const tools = isB ? searchToolsForB(domain, setup) : [webSearch];
-
+// Send one question to Claude and wait for the whole answer. Long searches
+// can pause part-way ("pause_turn"): then we send back what we have so far
+// and the search carries on, up to setup.requests requests in total (normal
+// search: 3, versions B-E: 5). Each time re-sends everything found so far,
+// so more rounds cost more. Returns { reply, allBlocks, usage }.
+async function askClaude(apiKey, setup, tools, question) {
   let messages = [{ role: "user", content: question }];
   const allBlocks = [];
   let reply = null;
   const usage = { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0,
     searches: 0, fetches: 0, requests: 0, model: setup.model };
 
-  // Long searches can pause part-way ("pause_turn"). When that happens we
-  // send back what we have so far and the search carries on, up to 2 times
-  // (version B: 4 times). Each time re-sends everything found so far, so more rounds cost more.
   for (let round = 0; round < setup.requests; round++) {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -939,12 +1010,148 @@ async function searchOfficialPages(apiKey, uniName, course, found, version) {
   if (reply.stop_reason === "refusal") {
     throw new Error("The online search was declined. Try writing the course name differently.");
   }
+  return { reply: reply, allBlocks: allBlocks, usage: usage };
+}
 
-  // Claude's final answer is the text in its last reply
-  const answerText = (reply.content || [])
+// The text of Claude's final answer
+function answerTextOf(reply) {
+  return (reply.content || [])
     .filter(function (block) { return block.type === "text"; })
     .map(function (block) { return block.text; })
     .join("");
+}
+
+// ----- The qualification search (versions B-E) -----
+// The main search is the same for every student. This second, smaller search
+// looks for what only applies to the student's own qualification (e.g. the
+// Abitur): grades, required tests and their dates, rules hidden behind
+// "Show more" or per-country pages. It's saved per programme and
+// qualification, so the next student with the same qualification reuses it.
+const QUALIFICATION_INSTRUCTIONS = [
+  "You find the entry requirements for applicants with one specific school qualification, for one university course, from official sources only (the university's own pages, its application portal, central admissions systems and official test providers). Never use blogs, forums, ranking websites or agents.",
+  "",
+  "Look for:",
+  "- the minimum grade or score for this qualification, and the university's own conversion table if it has one",
+  "- required subjects",
+  "- tests that applicants with this qualification must take (for example SAT or ACT for students who finish their school-leaving exam after the deadline), with their registration deadlines and test dates",
+  "- English language requirements for this qualification",
+  "- deadlines that only apply to this qualification (for example when the final diploma must arrive)",
+  "Open the pages where this hides: qualification selectors, per-country pages, dropdowns and \"show more\" sections.",
+  "",
+  "Never invent anything: no inferred or estimated dates, no dates from previous years, no made-up day (write only the month if no day is published). Write a window of days as a range, for example 12-16 October 2026. If the pages say nothing about this qualification, write Not available.",
+  "",
+  "Return plain text with these two sections, each starting on its own line:",
+  "Qualification Requirements: up to 5 sentences for this qualification only.",
+  "Qualification Dates: one date per line, as: type | campus | name | date | applies to | page URL. type is one of: test, deadline, documents, other. campus is - unless only one campus. applies to is: other: <qualification> applicants, or all. page URL is the official page where you found it. Write Not available if there are none.",
+  "  Example (made up, never copy): test | - | SAT registration deadline | 3 October 2026 | other: Abitur applicants | https://www.example.edu/abitur",
+  "Use plain text only - no markdown.",
+].join("\n");
+
+// The qualification search reads less than the main search
+const QUALIFICATION_LIMITS = { searches: 4, fetches: 3, pageTokens: 12000, maxTokens: 4000, requests: 3 };
+
+async function searchQualification(apiKey, uniName, course, found, version, qualification) {
+  const setup = Object.assign({}, SEARCH_SETUPS[version], QUALIFICATION_LIMITS, { instructions: QUALIFICATION_INSTRUCTIONS });
+  const domain = found && found.website ? getDomain(found.website) : "";
+  const profile = getAcademicProfile();
+  const question = [
+    "University: " + uniName,
+    "Course: " + course,
+    domain ? "Official website: " + found.website : "",
+    "Today's date: " + new Date().toISOString().slice(0, 10),
+    "Qualification: " + qualification,
+    profile.intendedStartDate ? "Requested intake: " + intakeLabel(profile.intendedStartDate) + " entry" : "",
+  ].filter(Boolean).join("\n");
+
+  const asked = await askClaude(apiKey, setup, searchToolsForB(domain, setup), question);
+  const text = answerTextOf(asked.reply);
+  const answer = parseSections(text);
+  asked.usage.cost = usageCost(asked.usage);
+  const seen = pagesAndSearches(asked.allBlocks);
+  return {
+    qualification: qualification,
+    requirements: cleanAnswer(answer.qualRequirements),
+    applicationDates: parseApplicationDates(answer.qualDates, { appliesTo: true, maxDates: 20 }),
+    usage: asked.usage,
+    diagnostics: { pages: seen.pages, searches: seen.searches, answer: text.slice(0, 10000) },
+  };
+}
+
+// Add the qualification search's findings to the main search's details
+// (a new object: the saved main search stays as it was)
+function mergeQualification(details, qual, maxDates) {
+  const merged = Object.assign({}, details);
+  if (qual.requirements) {
+    merged.requirements = "For " + qual.qualification + ": " + qual.requirements +
+      (details.requirements ? "\nGeneral: " + details.requirements : "");
+  }
+  const dates = details.applicationDates.slice();
+  qual.applicationDates.forEach(function (item) {
+    const twin = dates.some(function (other) {
+      return other.type === item.type && other.date === item.date && other.label.toLowerCase() === item.label.toLowerCase();
+    });
+    if (!twin) dates.push(item);
+  });
+  merged.applicationDates = sortDateItems(dates).slice(0, maxDates);
+  return merged;
+}
+
+// For the experiment's diagnostics: the searches Claude ran and the pages
+// it tried to read, each marked read or failed (with the reason the API gave)
+function pagesAndSearches(allBlocks) {
+  const results = {};
+  allBlocks.forEach(function (block) {
+    if (block.type === "web_fetch_tool_result" && block.tool_use_id) results[block.tool_use_id] = block.content || {};
+  });
+  const pages = [];
+  const searches = [];
+  allBlocks.forEach(function (block) {
+    if (block.type !== "server_tool_use" || !block.input) return;
+    if (block.name === "web_search" && block.input.query) searches.push(String(block.input.query).slice(0, 200));
+    if (block.name === "web_fetch" && block.input.url) {
+      const result = results[block.id];
+      let status = "unknown";
+      if (result && result.type === "web_fetch_result") status = "read";
+      else if (result) status = "failed: " + (result.error_code || result.type || "error");
+      pages.push({ url: safeUrl(block.input.url) || String(block.input.url).slice(0, 300), status: status });
+    }
+  });
+  return { pages: pages, searches: searches };
+}
+
+// version: "" (the normal site), or "A" to "E" (the experiment, see above)
+async function searchOfficialPages(apiKey, uniName, course, found, version) {
+  const setup = SEARCH_SETUPS[version] || SEARCH_SETUPS.A;   // the normal site uses A's setup
+  const isB = Boolean(setup.thorough);   // B, C, D and E
+  const domain = found && found.website ? getDomain(found.website) : "";
+  const today = new Date().toISOString().slice(0, 10);
+  const profile = getAcademicProfile();
+
+  const question = isB ? questionForB(uniName, course, domain ? found.website : "", today, profile) : [
+    "University: " + uniName,
+    "Course: " + course,
+    domain ? "Official website: " + found.website : "",
+    "Today's date: " + today,
+    // Your academic profile, so the cycle, grades and rules match you
+    profile.intendedStartDate ? "Intended start date: " + intakeLabel(profile.intendedStartDate) : "",
+    profile.currentGradeLevel ? "Current grade level: " + profile.currentGradeLevel : "",
+    profile.schoolSystem ? "School system: " + profile.schoolSystem : "",
+    profile.countryOfResidence ? "Country of residence: " + profile.countryOfResidence : "",
+  ].filter(Boolean).join("\n");
+
+  // The web search tool. max_uses: 3 matches the "stop after 3 pages" rule,
+  // and allowed_domains limits it to the official website when we know it.
+  const webSearch = { type: "web_search_20260209", name: "web_search", max_uses: 3 };
+  if (domain) webSearch.allowed_domains = [domain];
+  const tools = isB ? searchToolsForB(domain, setup) : [webSearch];
+
+  const asked = await askClaude(apiKey, setup, tools, question);
+  const reply = asked.reply;
+  const allBlocks = asked.allBlocks;
+  const usage = asked.usage;
+
+  // Claude's final answer is the text in its last reply
+  const answerText = answerTextOf(reply);
   const answer = parseSections(answerText);
   if (Object.keys(answer).length === 0) {
     throw new Error("The online search didn't return usable details. Try again.");
@@ -1000,6 +1207,10 @@ async function searchOfficialPages(apiKey, uniName, course, found, version) {
   } else if (deadlineText && !deadline) {
     notes = ("Application deadline: " + deadlineText + " " + notes).trim();
   }
+  // Only a month is published, e.g. "June 2027": shown next to the empty date box
+  // (not when an exact deadline was found but has passed)
+  const hasExactDay = Boolean(deadlineText && (parseDeadline(deadlineText) || parseLooseDate(deadlineText)));
+  const monthOnly = !deadline && deadlineText && !hasExactDay ? parseMonthOnly(deadlineText) : "";
 
   // Version B always says which admissions cycle the dates are for
   // (or that the requested intake doesn't exist), at the start of the notes
@@ -1012,13 +1223,16 @@ async function searchOfficialPages(apiKey, uniName, course, found, version) {
   }
 
   const details = {
+    // The requested intake doesn't exist at this university (B-E say so in the cycle text)
+    intakeMismatch: isB && /requested intake not available/i.test(cycle),
     deadline: deadline,
+    deadlineMonth: monthOnly ? itemDateText({ date: monthOnly, approximate: true }).replace(" (approx.)", "") : "",
     requirements: cleanAnswer(answer.requirements),
     applicationInfo: cleanAnswer(answer.applicationInfo),
     courseDescription: cleanAnswer(answer.courseDescription),
     notes: notes,
-    city: cleanAnswer(answer.city),
-    country: cleanAnswer(answer.country),
+    city: cleanPlace(answer.city),
+    country: cleanPlace(answer.country),
     sources: cleanSources,
     domain: domain,
     applicationDates: applicationDates,
@@ -1040,6 +1254,8 @@ async function searchOfficialPages(apiKey, uniName, course, found, version) {
     }
     usage.cost = usageCost(usage);
     details.usage = usage;
+    const seen = pagesAndSearches(allBlocks);
+    details.diagnostics = { pages: seen.pages, searches: seen.searches, answer: answerText.slice(0, 20000) };
   }
   return details;
 }
@@ -1086,6 +1302,14 @@ function getCachedSearch(key) {
 
   // If the remembered deadline has passed since, search again for the new one
   if (entry.details.deadline && daysUntil(entry.details.deadline) < 0) return null;
+  return entry;
+}
+
+// A saved qualification search, or null (same 7-day rule as other searches)
+function getCachedQualification(key) {
+  const entry = loadSearchCache()[key];
+  if (!entry || entry.version !== CACHE_VERSION || !entry.qualification) return null;
+  if ((Date.now() - entry.savedAt) / (24 * 60 * 60 * 1000) > CACHE_DAYS) return null;
   return entry;
 }
 
@@ -1179,10 +1403,33 @@ async function runAutoFill(request, onStep) {
     }
   }
 
+  // Versions B-E: the qualification search, saved per programme and qualification
+  let qualification = null;
+  let qualificationError = "";
+  const setup = SEARCH_SETUPS[version];
+  const qualificationName = getAcademicProfile().schoolSystem;
+  if (details && setup && setup.thorough && qualificationName) {
+    const qualKey = ["q", version, name, course, qualificationName].join("|").toLowerCase().replace(/\s+/g, " ");
+    const savedQual = !request.fresh ? getCachedQualification(qualKey) : null;
+    if (savedQual) {
+      qualification = Object.assign({}, savedQual.qualification, { cachedAt: savedQual.savedAt });
+    } else {
+      const qualStart = Date.now();
+      try {
+        qualification = await searchQualification(apiKey, found ? found.officialName : name, course, found, version, qualificationName);
+        qualification.usage.runtimeMs = Date.now() - qualStart;
+        saveCachedSearch(qualKey, { version: CACHE_VERSION, savedAt: Date.now(), qualification: qualification });
+      } catch (error) {
+        qualificationError = error.message || "The qualification search failed.";
+      }
+    }
+    if (qualification) details = mergeQualification(details, qualification, setup.maxDates);
+  }
+
   // Combine the two. For city and country the official website wins,
   // because it knows which campus teaches the course.
   const result = {
-    name: name,
+    name: displayName(name, found),
     course: course,
     city: (details && details.city) || (found && found.city) || "",
     country: (details && details.country) || (found && found.country) || "",
@@ -1197,14 +1444,31 @@ async function runAutoFill(request, onStep) {
     foundOnWikidata: Boolean(found),
     applicationDates: details ? details.applicationDates || [] : [],
     rolling: Boolean(details && details.rolling),
-    intake: details ? getAcademicProfile().intendedStartDate : "",   // the start date these dates are for
+    // The start date these dates are for (left empty when that intake doesn't exist there)
+    intake: details && !details.intakeMismatch ? getAcademicProfile().intendedStartDate : "",
   };
   // The experiment: which version ran, and what it used (shown under the result)
   if (version) {
-    result.experiment = { version: version, usage: details ? details.usage || null : null, cycle: details ? details.cycle || "" : "" };
+    result.experiment = {
+      version: version,
+      usage: details ? details.usage || null : null,
+      cycle: details ? details.cycle || "" : "",
+      diagnostics: details ? details.diagnostics || null : null,
+      details: details,                      // the form fields, for the panel and Copy for Excel
+      qualification: qualification,          // B-E: the qualification search (or null)
+      qualificationError: qualificationError,
+    };
   }
 
   return { result: result, details: details, errorText: errorText, cachedAt: cached ? cached.savedAt : null };
+}
+
+// The name to save: the official one (from Wikidata) when you typed the
+// name all in lower case ("warwick" -> "University of Warwick"); otherwise
+// the name as you wrote it ("ESCP" stays "ESCP").
+function displayName(typed, found) {
+  if (found && found.officialName && typed === typed.toLowerCase() && /[a-z]/.test(typed)) return found.officialName;
+  return typed;
 }
 
 // True when auto-fill can search official websites with Claude
